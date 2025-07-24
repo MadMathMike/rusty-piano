@@ -2,8 +2,8 @@
 Goal: build a terminal app using Rust that can play collected albums from your Pandora music account.
 
 # Goals
- - [ ] Play local mp3 on default media output device
- - [x] Authenticate with Pandora API
+ - [x] Play local mp3 on default media output device
+ - [ ] Authenticate with Pandora API
  - [ ] Securely store user credentials
  - [ ] Play single song from album
  - [ ] Play songs from album consecutively
@@ -15,3 +15,20 @@ Goal: build a terminal app using Rust that can play collected albums from your P
  - [ ] Stretch: Offline mode
  - [ ] Stretch: Local playlists
  - [ ] Stretch: Downloading progress bar (for slow connections)
+
+
+
+# Lessons
+### Playback
+Tried playback provided via [playback-rs](https://crates.io/crates/playback-rs/0.4.4).
+ - Seems to require libasound2-dev (Ubuntu only?)
+   - https://askubuntu.com/a/1396206
+ - Seems to also require nightly/beta rust compiler (which I don't want to do)
+   - https://askubuntu.com/a/1396206
+```
+   Compiling playback-rs v0.4.4
+error[E0554]: `#![feature]` may not be used on the stable release channel
+```
+
+Switched to [rodio](https://crates.io/crates/rodio).
+ - Similar dependencies: https://github.com/RustAudio/rodio?tab=readme-ov-file#dependencies-linux-only
