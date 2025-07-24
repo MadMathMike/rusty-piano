@@ -4,6 +4,7 @@ Goal: build a terminal app using Rust that can play collected albums from your P
 # Goals
  - [x] Play local mp3 on default media output device
  - [ ] Authenticate with Pandora API
+   - [ ] Blowfish cipher
  - [ ] Securely store user credentials
  - [ ] Play single song from album
  - [ ] Play songs from album consecutively
@@ -15,8 +16,6 @@ Goal: build a terminal app using Rust that can play collected albums from your P
  - [ ] Stretch: Offline mode
  - [ ] Stretch: Local playlists
  - [ ] Stretch: Downloading progress bar (for slow connections)
-
-
 
 # Lessons
 ### Playback
@@ -32,3 +31,6 @@ error[E0554]: `#![feature]` may not be used on the stable release channel
 
 Switched to [rodio](https://crates.io/crates/rodio).
  - Similar dependencies: https://github.com/RustAudio/rodio?tab=readme-ov-file#dependencies-linux-only
+
+### Unofficial Pandora Docs
+https://6xq.net/pandora-apidoc/json/
