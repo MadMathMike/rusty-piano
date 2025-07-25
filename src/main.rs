@@ -1,8 +1,25 @@
 use reqwest::blocking::Client;
 use rodio::{Decoder, OutputStreamBuilder};
+use serde::Deserialize;
 use serde_json::json;
 use std::fs::File;
 use std::thread::sleep;
+
+#[derive(Debug, Deserialize)]
+struct PartnerAuthResult {
+    #[serde(rename = "partnerId")]
+    pub partner_id: String,
+    #[serde(rename = "partnerAuthToken")]
+    pub partner_auth_token: String,
+    #[serde(rename = "syncTime")]
+    pub sync_time: String
+}
+
+#[derive(Debug, Deserialize)]
+struct PartnerAuthResponse {
+    pub stat: String,
+    pub result: PartnerAuthResult
+}
 
 fn main() {
     let auth_body = json!({
@@ -24,8 +41,10 @@ fn main() {
 
     println!("Auth status code: {:?}", response.status());
 
-    let response_body = response.text().expect("Error reading response body for auth request");
-    println!("Auth response body: {}", response_body);
+    // TODO: Error out on response status code != 200
+
+    let partner_auth_response = response.json::<PartnerAuthResponse>().expect("Failed to parse partner auth response");
+    println!("{:?}", partner_auth_response);
 
     // Not needed?
     // TODO: Encrypt with blowfish
