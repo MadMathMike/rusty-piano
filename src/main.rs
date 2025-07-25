@@ -1,3 +1,6 @@
+use blowfish::{Blowfish, BlowfishLE};
+use blowfish::cipher::{BlockEncrypt, BlockSizeUser, KeyInit};
+
 use reqwest::blocking::Client;
 use rodio::{Decoder, OutputStreamBuilder};
 use serde::Deserialize;
@@ -12,14 +15,21 @@ struct PartnerAuthResult {
     #[serde(rename = "partnerAuthToken")]
     pub partner_auth_token: String,
     #[serde(rename = "syncTime")]
-    pub sync_time: String
+    pub sync_time: String,
 }
 
 #[derive(Debug, Deserialize)]
 struct PartnerAuthResponse {
     pub stat: String,
-    pub result: PartnerAuthResult
+    pub result: PartnerAuthResult,
 }
+
+#[derive(Debug, Deserialize)]
+struct PandoraResponse {
+    pub stat: String,
+}
+
+// pandora request failure body: {"stat":"fail","message":"An unexpected error occurred","code":6}
 
 fn main() {
     let partner_auth_body = json!({
@@ -33,27 +43,86 @@ fn main() {
 
     // Send auth request
     let client = Client::new();
-    
-    let response = client.post(request_uri)
+
+    let response = client
+        .post(request_uri)
         .json(&partner_auth_body)
         .send()
         .expect("Error making auth call");
 
-    println!("Auth status code: {:?}", response.status());
+    println!("Partner auth status code: {:?}", response.status());
 
-    // TODO: Error out on response status code != 200
+    // // TODO: Error out on response status code != 200
 
-    let partner_auth_response = response.json::<PartnerAuthResponse>().expect("Failed to parse partner auth response");
+    let partner_auth_response = response
+        .json::<PartnerAuthResponse>()
+        .expect("Failed to parse partner auth response");
     println!("{:?}", partner_auth_response);
 
-    // Not needed?
-    // TODO: Encrypt with blowfish
-    // TODO: Convert to hexidecimal
+    let partner_id = &partner_auth_response.result.partner_id;
+    let request_uri = format!(
+        "https://internal-tuner.pandora.com/services/json/?method=auth.userLogin&partner_id={partner_id}"
+    );
 
-    fun_name();
+    let user_auth_body = json!({
+        "loginType": "user",
+        "username": "MichaelPeterson27@live.com",
+        "password": "TODO",
+        "partnerAuthToken": partner_auth_response.result.partner_auth_token.clone()
+    });
+
+    let key = "2%3WCL*JU$MP]4";
+    let user_auth_body_as_str = user_auth_body.to_string();
+
+    let encrypted_body = encrypt(key, &user_auth_body_as_str);
+
+    let response = client
+        .post(request_uri)
+        .body(encrypted_body)
+        .send()
+        .expect("Error making user auth call");
+
+    println!("User auth status code: {:?}", response.status());
+
+    // let user_auth_response = response
+    //     .json::<PandoraResponse>()
+    //     .expect("Failed to parse partner auth response");
+    // println!("{:?}", user_auth_response);
+
+    println!("{}", response.text().unwrap());
+
+    play_sample_sound();
 }
 
-fn fun_name() {
+fn encrypt(key: &str, input: &str) -> String {
+    let plaintext = input.as_bytes();
+    let blowfish = Blowfish::<byteorder::BigEndian>::new_from_slice(key.as_bytes()).unwrap();
+    let block_size = BlowfishLE::block_size(); // should be 8
+    let padded_len = plaintext.len().div_ceil(block_size) * block_size;
+    let mut padded_plaintext = vec![0u8; padded_len];
+    padded_plaintext[..plaintext.len()].copy_from_slice(plaintext);
+
+    let mut ciphertext = vec![0u8; padded_len];
+
+    for (in_block, out_block) in padded_plaintext
+        .chunks(block_size)
+        .zip(ciphertext.chunks_mut(block_size))
+    {
+        blowfish.encrypt_block_b2b(in_block.into(), out_block.into());
+    }
+
+    hex_encode(&ciphertext)
+}
+
+fn hex_encode(input: &[u8]) -> String {
+    let mut output = String::with_capacity(input.len() * 2);
+    for b in input {
+        output.push_str(&format!("{:02x}", b));
+    }
+    output
+}
+
+fn play_sample_sound() {
     let stream_handle =
         OutputStreamBuilder::open_default_stream().expect("Error opening default audio stream");
     // TODO: What is this doing?
@@ -66,4 +135,24 @@ fn fun_name() {
     stream_handle.mixer().add(source);
 
     sleep(std::time::Duration::from_secs(5));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn encrypt_test_vector() {
+        let encrypted = encrypt("R=U!LH$O2B#", "è.<Ú1477631903");
+        assert_eq!(encrypted, "4a6b45612b018614c92c50dc73462bbd");
+    }
+
+    #[test]
+    fn test_hex_encode() {
+        let input = "Hello world!";
+        let expected_ouput = "48656c6c6f20776f726c6421";
+        let output = hex_encode(input.as_bytes());
+
+        assert_eq!(expected_ouput, output);
+    }
 }
