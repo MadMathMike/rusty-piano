@@ -4,7 +4,9 @@ Goal: build a terminal app using Rust that can play collected albums from your P
 # Goals
  - [x] Play local mp3 on default media output device
  - [ ] Authenticate with Pandora API
+   - [x] Partner login
    - [ ] Blowfish cipher
+   - [ ] User authentication
  - [ ] Securely store user credentials
  - [ ] Play single song from album
  - [ ] Play songs from album consecutively
@@ -16,6 +18,7 @@ Goal: build a terminal app using Rust that can play collected albums from your P
  - [ ] Stretch: Offline mode
  - [ ] Stretch: Local playlists
  - [ ] Stretch: Downloading progress bar (for slow connections)
+ - [ ] Stretch: Debug logging for trouble shooting?
 
 # Lessons
 ### Playback
