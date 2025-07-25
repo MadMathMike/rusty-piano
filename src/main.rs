@@ -22,7 +22,7 @@ struct PartnerAuthResponse {
 }
 
 fn main() {
-    let auth_body = json!({
+    let partner_auth_body = json!({
         "username": "pandora one",
         "password": "TVCKIBGS9AO9TSYLNNFUML0743LH82D",
         "deviceModel": "D01",
@@ -35,7 +35,7 @@ fn main() {
     let client = Client::new();
     
     let response = client.post(request_uri)
-        .json(&auth_body)
+        .json(&partner_auth_body)
         .send()
         .expect("Error making auth call");
 

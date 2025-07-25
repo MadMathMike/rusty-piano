@@ -15,6 +15,7 @@ Goal: build a terminal app using Rust that can play collected albums from your P
  - [ ] UI: Playback controls 
  - [ ] UI: Song progress
  - [ ] UI: Navigation while album playing
+ - [ ] Stretch: Code: create macro to derive "pandora_response" (to auto-implement "stat" and "result" fields)
  - [ ] Stretch: Offline mode
  - [ ] Stretch: Local playlists
  - [ ] Stretch: Downloading progress bar (for slow connections)
