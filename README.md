@@ -20,6 +20,7 @@ Goal: build a terminal app using Rust that can play collected albums from your P
  - [ ] Stretch: Local playlists
  - [ ] Stretch: Downloading progress bar (for slow connections)
  - [ ] Stretch: Debug logging for trouble shooting?
+ - [ ] Stretch: Album/Song searching
 
 # Lessons
 ### Playback

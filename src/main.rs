@@ -1,5 +1,8 @@
-use blowfish::{Blowfish, BlowfishLE};
 use blowfish::cipher::{BlockEncrypt, BlockSizeUser, KeyInit};
+use blowfish::{Blowfish, BlowfishLE};
+
+use cipher::BlockDecrypt;
+use hex::FromHex;
 
 use reqwest::blocking::Client;
 use rodio::{Decoder, OutputStreamBuilder};
@@ -59,6 +62,16 @@ fn main() {
         .expect("Failed to parse partner auth response");
     println!("{:?}", partner_auth_response);
 
+    // TODO: calculate sync time
+    let key = "2%3WCL*JU$MP]4";
+
+    let decrypted_sync_time_bytes = decrypt_as_bytes(key, &partner_auth_response.result.sync_time);
+    println!("{:?}", decrypted_sync_time_bytes);
+
+    //decrypted_sync_time_bytes[4..].iter().map(|b| )
+    //let decrypted_sync_time = String::from_utf8(decrypted_sync_time_bytes[4..].to_vec()).expect("Error decoding bytes as UTF8");
+    // println!("{:?}", decrypted_sync_time);
+
     let partner_id = &partner_auth_response.result.partner_id;
     let request_uri = format!(
         "https://internal-tuner.pandora.com/services/json/?method=auth.userLogin&partner_id={partner_id}"
@@ -67,11 +80,10 @@ fn main() {
     let user_auth_body = json!({
         "loginType": "user",
         "username": "MichaelPeterson27@live.com",
-        "password": "TODO",
+        "password": "todo",
         "partnerAuthToken": partner_auth_response.result.partner_auth_token.clone()
     });
 
-    let key = "2%3WCL*JU$MP]4";
     let user_auth_body_as_str = user_auth_body.to_string();
 
     let encrypted_body = encrypt(key, &user_auth_body_as_str);
@@ -95,9 +107,11 @@ fn main() {
 }
 
 fn encrypt(key: &str, input: &str) -> String {
-    let plaintext = input.as_bytes();
     let blowfish = Blowfish::<byteorder::BigEndian>::new_from_slice(key.as_bytes()).unwrap();
     let block_size = BlowfishLE::block_size(); // should be 8
+
+    let plaintext = input.as_bytes();
+    println!("{:?}", plaintext);
     let padded_len = plaintext.len().div_ceil(block_size) * block_size;
     let mut padded_plaintext = vec![0u8; padded_len];
     padded_plaintext[..plaintext.len()].copy_from_slice(plaintext);
@@ -114,6 +128,29 @@ fn encrypt(key: &str, input: &str) -> String {
     hex_encode(&ciphertext)
 }
 
+fn decrypt(key: &str, input: &str) -> String {
+    String::from_utf8(decrypt_as_bytes(key, input)).expect("Error converting bytes to UTF8")
+}
+
+fn decrypt_as_bytes(key: &str, input: &str) -> Vec<u8> {
+    let decoded_input: Vec<u8> = hex::decode(input).expect("Error hex decoding input string");
+
+    let blowfish = Blowfish::<byteorder::BigEndian>::new_from_slice(key.as_bytes()).unwrap();
+    let block_size = BlowfishLE::block_size(); // should be 8
+
+    let mut plaintext = vec![0u8; decoded_input.len()];
+
+    for (in_block, out_block) in decoded_input
+        .chunks(block_size)
+        .zip(plaintext.chunks_mut(block_size))
+    {
+        blowfish.decrypt_block_b2b(in_block.into(), out_block.into());
+    }
+
+    plaintext
+}
+
+// TODO: replace with hex library
 fn hex_encode(input: &[u8]) -> String {
     let mut output = String::with_capacity(input.len() * 2);
     for b in input {
@@ -145,6 +182,12 @@ mod tests {
     fn encrypt_test_vector() {
         let encrypted = encrypt("R=U!LH$O2B#", "è.<Ú1477631903");
         assert_eq!(encrypted, "4a6b45612b018614c92c50dc73462bbd");
+    }
+
+    #[test]
+    fn decrypt_test_value() {
+        let decrypted = decrypt("R=U!LH$O2B#", "4a6b45612b018614c92c50dc73462bbd");
+        assert_eq!(decrypted, "è.<Ú1477631903");
     }
 
     #[test]
