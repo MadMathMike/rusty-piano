@@ -79,8 +79,9 @@ fn main() {
     let time_offset = partner_request_time - sync_time;
 
     let partner_id = &auth_response.result.partner_id;
+    // The empty auth_token parameter is important. API returns error 3 (URL_PARAM_MISSING_AUTH_TOKEN) without it
     let request_uri = format!(
-        "https://internal-tuner.pandora.com/services/json/?method=auth.userLogin&partner_id={partner_id}"
+        "https://internal-tuner.pandora.com/services/json/?method=auth.userLogin&partner_id={partner_id}&auth_token="
     );
 
     // TODO: pull password from environment variable (or something)
