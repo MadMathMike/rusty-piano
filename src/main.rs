@@ -121,7 +121,7 @@ fn encrypt(key: &str, input: &str) -> String {
         blowfish.encrypt_block_b2b(in_block.into(), out_block.into());
     }
 
-    hex_encode(&ciphertext)
+    hex::encode(&ciphertext)
 }
 
 fn decrypt(key: &str, input: &str) -> Vec<u8> {
@@ -140,15 +140,6 @@ fn decrypt(key: &str, input: &str) -> Vec<u8> {
     }
 
     plaintext
-}
-
-// TODO: replace with hex library
-fn hex_encode(input: &[u8]) -> String {
-    let mut output = String::with_capacity(input.len() * 2);
-    for b in input {
-        output.push_str(&format!("{:02x}", b));
-    }
-    output
 }
 
 fn play_sample_sound() {
@@ -181,14 +172,5 @@ mod tests {
         let decrypted = decrypt("R=U!LH$O2B#", "4a6b45612b018614c92c50dc73462bbd");
         let decrypted = String::from_utf8(decrypted).unwrap();
         assert_eq!(decrypted, "è.<Ú1477631903");
-    }
-
-    #[test]
-    fn test_hex_encode() {
-        let input = "Hello world!";
-        let expected_ouput = "48656c6c6f20776f726c6421";
-        let output = hex_encode(input.as_bytes());
-
-        assert_eq!(expected_ouput, output);
     }
 }
