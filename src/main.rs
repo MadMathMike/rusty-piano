@@ -60,14 +60,18 @@ fn main() {
     println!("{:?}", auth_response);
 
     // TODO: calculate sync time
-    let key = "2%3WCL*JU$MP]4";
+    println!("syncTime: {:?}", &auth_response.result.sync_time);
+    let decryption_key = "U#IO$RZPAB%VX2";
 
-    let sync_time_decrypted = decode_and_decrypt(key, &auth_response.result.sync_time);
-    println!("{:?}", sync_time_decrypted);
+    let sync_time_decrypted_bytes = decode_and_decrypt(decryption_key, &auth_response.result.sync_time);
+    
+    for byte in sync_time_decrypted_bytes {
+        println!("Byte: {:?}. Is ASCII: {}", byte, if byte.is_ascii() {String::from_utf8(vec![byte]).unwrap()} else { "meh".to_owned() });
+    }
 
     //decrypted_sync_time_bytes[4..].iter().map(|b| )
-    //let decrypted_sync_time = String::from_utf8(decrypted_sync_time_bytes[4..].to_vec()).expect("Error decoding bytes as UTF8");
-    // println!("{:?}", decrypted_sync_time);
+    // let decrypted_sync_time = String::from_utf8(sync_time_decrypted_bytes[4..].to_vec()).expect("Error decoding bytes as UTF8");
+    //  println!("{:?}", decrypted_sync_time);
 
     let partner_id = &auth_response.result.partner_id;
     let request_uri = format!(
@@ -83,7 +87,8 @@ fn main() {
 
     let user_auth_body_as_str = user_auth_body.to_string();
 
-    let encrypted_body = encrypt(key, &user_auth_body_as_str);
+    let encryption_key = "2%3WCL*JU$MP]4";
+    let encrypted_body = encrypt(encryption_key, &user_auth_body_as_str);
 
     let auth_response = client
         .post(request_uri)
@@ -97,7 +102,6 @@ fn main() {
         .json::<PandoraResponse>()
         .expect("Failed to parse partner auth response");
     println!("{:?}", user_auth_response);
-
 
     play_sample_sound();
 }
@@ -127,12 +131,16 @@ fn encrypt(key: &str, input: &str) -> String {
 fn decode_and_decrypt(key: &str, input: &str) -> Vec<u8> {
     let decoded_input: Vec<u8> = hex::decode(input).expect("Error hex decoding input string");
 
+    decrypt(key, decoded_input)
+}
+
+fn decrypt(key: &str, input: Vec<u8>) -> Vec<u8> {
     let blowfish = Blowfish::<byteorder::BigEndian>::new_from_slice(key.as_bytes()).unwrap();
     let block_size = BlowfishLE::block_size(); // should be 8
 
-    let mut plaintext = vec![0u8; decoded_input.len()];
+    let mut plaintext = vec![0u8; input.len()];
 
-    for (in_block, out_block) in decoded_input
+    for (in_block, out_block) in input
         .chunks(block_size)
         .zip(plaintext.chunks_mut(block_size))
     {
