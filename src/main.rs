@@ -8,7 +8,9 @@ use rodio::{Decoder, OutputStreamBuilder};
 use serde::Deserialize;
 use serde_json::json;
 use std::fs::File;
+use std::io::Read;
 use std::thread::sleep;
+use std::time::SystemTime;
 
 #[derive(Debug, Deserialize)]
 struct PartnerAuthResult {
@@ -47,42 +49,47 @@ fn main() {
     let client = Client::new();
 
     let auth_response = client
-        .post(request_uri)
-        .json(&partner_auth_body)
-        .send()
-        .expect("Error making auth call");
-
+    .post(request_uri)
+    .json(&partner_auth_body)
+    .send()
+    .expect("Error making auth call");
+    
     // TODO: Error out on response status code != 200
+
+    let partner_request_time = now_seconds();
+    println!("Partner request time: {:?}", partner_request_time);
+
 
     let auth_response = auth_response
         .json::<PartnerAuthResponse>()
         .expect("Failed to parse partner auth response");
-    println!("{:?}", auth_response);
+    println!("{:?}", auth_response.result);
 
     // TODO: calculate sync time
-    println!("syncTime: {:?}", &auth_response.result.sync_time);
     let decryption_key = "U#IO$RZPAB%VX2";
 
-    let sync_time_decrypted_bytes = decode_and_decrypt(decryption_key, &auth_response.result.sync_time);
+    let sync_time_bytes = decode_and_decrypt(decryption_key, &auth_response.result.sync_time);
     
-    for byte in sync_time_decrypted_bytes {
-        println!("Byte: {:?}. Is ASCII: {}", byte, if byte.is_ascii() {String::from_utf8(vec![byte]).unwrap()} else { "meh".to_owned() });
-    }
+    // Skip 4 bytes of garbage per documentation: https://6xq.net/pandora-apidoc/json/authentication/#partner-login
+    // Also ignore the last two bytes. Manual testing showed they were ASCII spaces.
+    let sync_time_string = String::from_utf8(sync_time_bytes[4..14].to_vec()).unwrap();
+    let sync_time = sync_time_string.parse::<u64>().unwrap();
+    println!("Sync time: {:?}", sync_time);
 
-    //decrypted_sync_time_bytes[4..].iter().map(|b| )
-    // let decrypted_sync_time = String::from_utf8(sync_time_decrypted_bytes[4..].to_vec()).expect("Error decoding bytes as UTF8");
-    //  println!("{:?}", decrypted_sync_time);
+    let time_offset = partner_request_time - sync_time;
 
     let partner_id = &auth_response.result.partner_id;
     let request_uri = format!(
         "https://internal-tuner.pandora.com/services/json/?method=auth.userLogin&partner_id={partner_id}"
     );
 
+    // TODO: pull password from environment variable (or something)
     let user_auth_body = json!({
         "loginType": "user",
         "username": "MichaelPeterson27@live.com",
-        "password": "todo",
-        "partnerAuthToken": auth_response.result.partner_auth_token.clone()
+        "password": "TODO",
+        "partnerAuthToken": auth_response.result.partner_auth_token.clone(),
+        "syncTime": now_seconds() + time_offset
     });
 
     let user_auth_body_as_str = user_auth_body.to_string();
@@ -96,14 +103,18 @@ fn main() {
         .send()
         .expect("Error making user auth call");
 
-    // println!("{}", auth_response.text().unwrap());
+    println!("{}", auth_response.text().unwrap());
 
-    let user_auth_response = auth_response
-        .json::<PandoraResponse>()
-        .expect("Failed to parse partner auth response");
-    println!("{:?}", user_auth_response);
+    // let user_auth_response = auth_response
+    //     .json::<PandoraResponse>()
+    //     .expect("Failed to parse partner auth response");
+    // println!("{:?}", user_auth_response);
 
     play_sample_sound();
+}
+
+fn now_seconds() -> u64 {
+    SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs()
 }
 
 fn encrypt(key: &str, input: &str) -> String {
@@ -111,7 +122,6 @@ fn encrypt(key: &str, input: &str) -> String {
     let block_size = BlowfishLE::block_size(); // should be 8
 
     let plaintext = input.as_bytes();
-    println!("{:?}", plaintext);
     let padded_len = plaintext.len().div_ceil(block_size) * block_size;
     let mut padded_plaintext = vec![0u8; padded_len];
     padded_plaintext[..plaintext.len()].copy_from_slice(plaintext);
