@@ -62,7 +62,7 @@ fn main() {
     // TODO: calculate sync time
     let key = "2%3WCL*JU$MP]4";
 
-    let sync_time_decrypted = decrypt(key, &auth_response.result.sync_time);
+    let sync_time_decrypted = decode_and_decrypt(key, &auth_response.result.sync_time);
     println!("{:?}", sync_time_decrypted);
 
     //decrypted_sync_time_bytes[4..].iter().map(|b| )
@@ -124,7 +124,7 @@ fn encrypt(key: &str, input: &str) -> String {
     hex::encode(&ciphertext)
 }
 
-fn decrypt(key: &str, input: &str) -> Vec<u8> {
+fn decode_and_decrypt(key: &str, input: &str) -> Vec<u8> {
     let decoded_input: Vec<u8> = hex::decode(input).expect("Error hex decoding input string");
 
     let blowfish = Blowfish::<byteorder::BigEndian>::new_from_slice(key.as_bytes()).unwrap();
@@ -169,7 +169,7 @@ mod tests {
 
     #[test]
     fn decrypt_test_value() {
-        let decrypted = decrypt("R=U!LH$O2B#", "4a6b45612b018614c92c50dc73462bbd");
+        let decrypted = decode_and_decrypt("R=U!LH$O2B#", "4a6b45612b018614c92c50dc73462bbd");
         let decrypted = String::from_utf8(decrypted).unwrap();
         assert_eq!(decrypted, "è.<Ú1477631903");
     }
