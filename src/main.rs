@@ -2,7 +2,6 @@ use blowfish::cipher::{BlockEncrypt, BlockSizeUser, KeyInit};
 use blowfish::{Blowfish, BlowfishLE};
 
 use cipher::BlockDecrypt;
-use hex::FromHex;
 
 use reqwest::blocking::Client;
 use rodio::{Decoder, OutputStreamBuilder};
@@ -47,32 +46,30 @@ fn main() {
     // Send auth request
     let client = Client::new();
 
-    let response = client
+    let auth_response = client
         .post(request_uri)
         .json(&partner_auth_body)
         .send()
         .expect("Error making auth call");
 
-    println!("Partner auth status code: {:?}", response.status());
+    // TODO: Error out on response status code != 200
 
-    // // TODO: Error out on response status code != 200
-
-    let partner_auth_response = response
+    let auth_response = auth_response
         .json::<PartnerAuthResponse>()
         .expect("Failed to parse partner auth response");
-    println!("{:?}", partner_auth_response);
+    println!("{:?}", auth_response);
 
     // TODO: calculate sync time
     let key = "2%3WCL*JU$MP]4";
 
-    let decrypted_sync_time_bytes = decrypt_as_bytes(key, &partner_auth_response.result.sync_time);
-    println!("{:?}", decrypted_sync_time_bytes);
+    let sync_time_decrypted = decrypt(key, &auth_response.result.sync_time);
+    println!("{:?}", sync_time_decrypted);
 
     //decrypted_sync_time_bytes[4..].iter().map(|b| )
     //let decrypted_sync_time = String::from_utf8(decrypted_sync_time_bytes[4..].to_vec()).expect("Error decoding bytes as UTF8");
     // println!("{:?}", decrypted_sync_time);
 
-    let partner_id = &partner_auth_response.result.partner_id;
+    let partner_id = &auth_response.result.partner_id;
     let request_uri = format!(
         "https://internal-tuner.pandora.com/services/json/?method=auth.userLogin&partner_id={partner_id}"
     );
@@ -81,27 +78,26 @@ fn main() {
         "loginType": "user",
         "username": "MichaelPeterson27@live.com",
         "password": "todo",
-        "partnerAuthToken": partner_auth_response.result.partner_auth_token.clone()
+        "partnerAuthToken": auth_response.result.partner_auth_token.clone()
     });
 
     let user_auth_body_as_str = user_auth_body.to_string();
 
     let encrypted_body = encrypt(key, &user_auth_body_as_str);
 
-    let response = client
+    let auth_response = client
         .post(request_uri)
         .body(encrypted_body)
         .send()
         .expect("Error making user auth call");
 
-    println!("User auth status code: {:?}", response.status());
+    // println!("{}", auth_response.text().unwrap());
 
-    // let user_auth_response = response
-    //     .json::<PandoraResponse>()
-    //     .expect("Failed to parse partner auth response");
-    // println!("{:?}", user_auth_response);
+    let user_auth_response = auth_response
+        .json::<PandoraResponse>()
+        .expect("Failed to parse partner auth response");
+    println!("{:?}", user_auth_response);
 
-    println!("{}", response.text().unwrap());
 
     play_sample_sound();
 }
@@ -128,11 +124,7 @@ fn encrypt(key: &str, input: &str) -> String {
     hex_encode(&ciphertext)
 }
 
-fn decrypt(key: &str, input: &str) -> String {
-    String::from_utf8(decrypt_as_bytes(key, input)).expect("Error converting bytes to UTF8")
-}
-
-fn decrypt_as_bytes(key: &str, input: &str) -> Vec<u8> {
+fn decrypt(key: &str, input: &str) -> Vec<u8> {
     let decoded_input: Vec<u8> = hex::decode(input).expect("Error hex decoding input string");
 
     let blowfish = Blowfish::<byteorder::BigEndian>::new_from_slice(key.as_bytes()).unwrap();
@@ -187,6 +179,7 @@ mod tests {
     #[test]
     fn decrypt_test_value() {
         let decrypted = decrypt("R=U!LH$O2B#", "4a6b45612b018614c92c50dc73462bbd");
+        let decrypted = String::from_utf8(decrypted).unwrap();
         assert_eq!(decrypted, "è.<Ú1477631903");
     }
 
