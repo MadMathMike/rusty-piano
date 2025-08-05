@@ -35,6 +35,25 @@ struct PandoraResponse {
 
 // pandora request failure body: {"stat":"fail","message":"An unexpected error occurred","code":6}
 
+#[derive(Debug, Deserialize)]
+struct UserAuthResult {
+    #[serde(rename = "userAuthToken")]
+    pub user_auth_token: String,
+    pub username: String,
+    #[serde(rename = "canListen")]
+    pub can_listen: bool,
+    #[serde(rename = "userId")]
+    user_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct UserAuthResponse {
+    pub stat: String,
+    pub result: UserAuthResult,
+}
+
+// TODO: introduce logging
+
 fn main() {
     let partner_auth_body = json!({
         "username": "pandora one",
@@ -104,12 +123,39 @@ fn main() {
         .send()
         .expect("Error making user auth call");
 
-    println!("{}", auth_response.text().unwrap());
+    // TODO: eventually logging should maybe write this to console or to a file when the right level is set
+    // println!("{}", auth_response.text().unwrap());
 
-    // let user_auth_response = auth_response
-    //     .json::<PandoraResponse>()
-    //     .expect("Failed to parse partner auth response");
-    // println!("{:?}", user_auth_response);
+    // TODO: Error out on response status code != 200
+
+    let user_auth_response = auth_response
+        .json::<UserAuthResponse>()
+        .expect("Failed to parse user auth response");
+    println!("{:?}", user_auth_response);
+
+    // TODO: call user.getStationList
+    let auth_token = user_auth_response.result.user_auth_token;
+    let user_id = user_auth_response.result.user_id;
+    let request_uri = format!(
+        "https://internal-tuner.pandora.com/services/json/?method=user.getStationList&partner_id={partner_id}&user_id={user_id}&auth_token="
+    );
+
+    let get_station_list_body = json!({
+        "userAuthToken": auth_token,
+        "syncTime": now_seconds() + time_offset,
+        "returnAllStations": true
+    });
+
+    let get_station_list_body_as_str = get_station_list_body.to_string();
+    let encrypted_body = encrypt(encryption_key, &get_station_list_body_as_str);
+
+    let get_station_list_response = client
+        .post(request_uri)
+        .body(encrypted_body)
+        .send()
+        .expect("Error making get station list call");
+
+    println!("{}", get_station_list_response.text().unwrap());
 
     play_sample_sound();
 }
