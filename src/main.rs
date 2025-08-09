@@ -1,6 +1,7 @@
 use reqwest::blocking::Client;
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use rodio::{Decoder, OutputStreamBuilder};
+use serde::Deserialize;
 use serde_json::json;
 use std::env::var;
 use std::fs::File;
@@ -16,37 +17,74 @@ fn main() {
         .build()
         .unwrap();
 
-    let _head_response = client
+    let head_response = client
         .head("https://pandora.com")
         .header(USER_AGENT, "rusty-piano/0.1")
         .send()
         .expect("Error making HEAD request to root domain");
 
     // TODO how to handle non-OK responses
+    let csrf_token_cookie = head_response
+        .cookies()
+        .find(|c| c.name() == "csrftoken")
+        .expect("csrftoken cookie not found");
+    let csrf_token = csrf_token_cookie.value();
 
-    let password = var("PANDORA_PASSWORD")
-        .expect("Error retreiving PANDORA_PASSWORD from environment variables");
+    // Try to read from keyring
+    let user = whoami::username();
+    let entry = keyring::Entry::new("rusty-piano", &user).expect("Error creating keyring entry");
 
-    let login_body = json!(
-    {
-        "keepLoggedIn": true,
-        "password": password,
-        "username": "MichaelPeterson27@live.com"
-    });
+    let mut auth_token: Option<String> = None;
 
-    let login_response = client
-        .post("https://pandora.com/api/v1/auth/login")
-        .header(USER_AGENT, "rusty-piano/0.1")
-        .json(&login_body)
+    if let Ok(secret) = entry.get_secret() {
+        auth_token = Some(String::from_utf8(secret).unwrap());
+    }
+
+    if auth_token.is_none() {
+        let password = var("PANDORA_PASSWORD")
+            .expect("Error retreiving PANDORA_PASSWORD from environment variables");
+
+        // TODO: login can take existing auth token (existingAuthToken)
+        let login_body = json!({
+            "keepLoggedIn": true,
+            "password": password,
+            "username": "MichaelPeterson27@live.com"
+        });
+
+        let login_response = client
+            .post("https://pandora.com/api/v1/auth/login")
+            .header(USER_AGENT, "rusty-piano/0.1")
+            .json(&login_body)
+            .send()
+            .expect("Error calling login");
+
+        println!("Login status code: {:?}", login_response.status());
+
+        let login_response = login_response
+            .json::<LoginResponse>()
+            .expect("Failed to parse login response");
+
+        entry
+            .set_secret(login_response.auth_token.as_bytes())
+            .expect("Error setting keyring secret");
+
+        auth_token = Some(login_response.auth_token);
+    }
+
+    let auth_token = auth_token.unwrap();
+
+    let albums_body = json!({"request":{"sortOrder":"MOST_RECENT_ADDED","offset":0,"limit":40,"annotationLimit":40,"typePrefixes":["AL"]}});
+
+    let albums_response = client
+        .post("https://pandora.com/api/v6/collections/getSortedByTypes")
+        .json(&albums_body)
+        .header("x-authtoken", auth_token)
+        .header("x-csrftoken", csrf_token)
         .send()
-        .expect("Error building loging request");
+        .expect("Error getting collections");
 
-    // TODO: parse return value
-
-    // TODO: store auth token (for subsequent calls and for next session to bypass login)
-
-    println!("{:?}", login_response.status());
-    println!("{}", login_response.text().unwrap());
+    println!("Albums request status code: {:?}", albums_response.status());
+    println!("{:?}", albums_response.text().unwrap());
 
     play_sample_sound();
 }
@@ -64,4 +102,10 @@ fn play_sample_sound() {
     stream_handle.mixer().add(source);
 
     sleep(std::time::Duration::from_secs(5));
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LoginResponse {
+    pub auth_token: String,
 }

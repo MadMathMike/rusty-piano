@@ -1,0 +1,11 @@
+{
+    "request": {
+        "sortOrder": "MOST_RECENT_ADDED",
+        "offset": 0,
+        "limit": 40,
+        "annotationLimit": 40,
+        "typePrefixes": [
+            "AL"
+        ]
+    }
+}

@@ -44,3 +44,9 @@ Pandora web app uses REST API: https://6xq.net/pandora-apidoc
 
 Using cookies and setting a user-agent header help prevent xperimeter from flagging as a bot and issuing Captcha challenge
 (ChatGPT really helped me figure this out)
+
+Useful webtools filter `-collector -stats -/radio-health -getVersion -tzm.px-cloud.net -ingest.sentry.io`
+
+### Keyring
+Crate: 
+ - Seems to require dbus-devel
