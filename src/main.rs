@@ -2,6 +2,7 @@ use reqwest::blocking::Client;
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use rodio::{Decoder, OutputStreamBuilder};
 use serde_json::json;
+use std::env::var;
 use std::fs::File;
 use std::thread::sleep;
 
@@ -15,21 +16,21 @@ fn main() {
         .build()
         .unwrap();
 
-    let head_response = client
+    let _head_response = client
         .head("https://pandora.com")
         .header(USER_AGENT, "rusty-piano/0.1")
         .send()
         .expect("Error making HEAD request to root domain");
 
-    for cookie in head_response.cookies() {
-        println!("{cookie:?}");
-    }
+    // TODO how to handle non-OK responses
 
-    // TODO: securely retrieve password
+    let password = var("PANDORA_PASSWORD")
+        .expect("Error retreiving PANDORA_PASSWORD from environment variables");
+
     let login_body = json!(
     {
         "keepLoggedIn": true,
-        "password": "TODO",
+        "password": password,
         "username": "MichaelPeterson27@live.com"
     });
 
