@@ -1,3 +1,4 @@
+use reqwest::StatusCode;
 use reqwest::blocking::Client;
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use rodio::{Decoder, OutputStreamBuilder};
@@ -40,50 +41,45 @@ fn main() {
         auth_token = Some(String::from_utf8(secret).unwrap());
     }
 
+    // We can get an expired auth token response:
+    /*
+        Albums request status code: 401
+        "{\"message\":\"Auth Token is Expired - VIdIh9cGVJX4v6QBj7EXyEGgmStLGDOsa+HCgYGGBGB9I=\",\"errorCode\":1001,\"errorString\":\"INVALID_REQUEST\"}"
+    */
+
     if auth_token.is_none() {
-        let password = var("PANDORA_PASSWORD")
-            .expect("Error retreiving PANDORA_PASSWORD from environment variables");
-
-        // TODO: login can take existing auth token (existingAuthToken)
-        let login_body = json!({
-            "keepLoggedIn": true,
-            "password": password,
-            "username": "MichaelPeterson27@live.com"
-        });
-
-        let login_response = client
-            .post("https://pandora.com/api/v1/auth/login")
-            .header(USER_AGENT, "rusty-piano/0.1")
-            .json(&login_body)
-            .send()
-            .expect("Error calling login");
-
-        println!("Login status code: {:?}", login_response.status());
-
-        let login_response = login_response
-            .json::<LoginResponse>()
-            .expect("Failed to parse login response");
-
-        entry
-            .set_secret(login_response.auth_token.as_bytes())
-            .expect("Error setting keyring secret");
-
-        auth_token = Some(login_response.auth_token);
+        auth_token = Some(login(&client));
     }
-
-    let auth_token = auth_token.unwrap();
 
     let albums_body = json!({"request":{"sortOrder":"MOST_RECENT_ADDED","offset":0,"limit":40,"annotationLimit":40,"typePrefixes":["AL"]}});
 
-    let albums_response = client
+    let mut albums_response = client
         .post("https://pandora.com/api/v6/collections/getSortedByTypes")
         .json(&albums_body)
-        .header("x-authtoken", auth_token)
+        .header("x-authtoken", auth_token.clone().unwrap())
         .header("x-csrftoken", csrf_token)
         .send()
         .expect("Error getting collections");
 
     println!("Albums request status code: {:?}", albums_response.status());
+
+    // Question: would persistent cookies make it more likely that an old auth token would still be valid?
+    // In the web app, simply reloading the page yields a new csrftoken, so it isn't that value that could keep the token alive longer...
+    // There is a lithiumSSO:pandora.prod cookie that might have more potential for keeping us logged in
+    if albums_response.status() == StatusCode::UNAUTHORIZED {
+        auth_token = Some(login(&client));
+
+        albums_response = client
+            .post("https://pandora.com/api/v6/collections/getSortedByTypes")
+            .json(&albums_body)
+            .header("x-authtoken", auth_token.clone().unwrap())
+            .header("x-csrftoken", csrf_token)
+            .send()
+            .expect("Error getting collections");
+
+        println!("Albums request status code: {:?}", albums_response.status());
+    }
+
     println!("{:?}", albums_response.text().unwrap());
 
     play_sample_sound();
@@ -108,4 +104,37 @@ fn play_sample_sound() {
 #[serde(rename_all = "camelCase")]
 struct LoginResponse {
     pub auth_token: String,
+}
+
+fn login(client: &Client) -> String {
+    // TODO: once we have a UI, prompt for the password isntead of looking in the environment variables
+    let password = var("PANDORA_PASSWORD")
+        .expect("Error retreiving PANDORA_PASSWORD from environment variables");
+
+    let login_body = json!({
+        "keepLoggedIn": true,
+        "password": password,
+        "username": "MichaelPeterson27@live.com"
+    });
+
+    let login_response = client
+        .post("https://pandora.com/api/v1/auth/login")
+        .header(USER_AGENT, "rusty-piano/0.1")
+        .json(&login_body)
+        .send()
+        .expect("Error calling login");
+
+    println!("Login status code: {:?}", login_response.status());
+
+    let login_response = login_response
+        .json::<LoginResponse>()
+        .expect("Failed to parse login response");
+
+    let user = whoami::username();
+    let entry = keyring::Entry::new("rusty-piano", &user).expect("Error creating keyring entry");
+    entry
+        .set_secret(login_response.auth_token.as_bytes())
+        .expect("Error setting keyring secret");
+
+    login_response.auth_token
 }
