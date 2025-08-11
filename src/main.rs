@@ -66,6 +66,8 @@ fn main() {
     // Question: would persistent cookies make it more likely that an old auth token would still be valid?
     // In the web app, simply reloading the page yields a new csrftoken, so it isn't that value that could keep the token alive longer...
     // There is a lithiumSSO:pandora.prod cookie that might have more potential for keeping us logged in
+    // Upon further inspecting, that cookie seems to be come from a request to the pandora.com/community/sso/auth_token=<token> endpoint,
+    // so it might not be relevant at all
     if albums_response.status() == StatusCode::UNAUTHORIZED {
         auth_token = Some(login(&client));
 
@@ -80,7 +82,53 @@ fn main() {
         println!("Albums request status code: {:?}", albums_response.status());
     }
 
-    println!("{:?}", albums_response.text().unwrap());
+    let albums_response = albums_response
+        .json::<AlbumResponse>()
+        .expect("Error parsing albums response");
+
+    // println!("{albums_response:?}");
+
+    let album = albums_response.items.first().unwrap();
+
+    let album_details_response = client
+        .post("https://pandora.com/api/v4/catalog/getDetails")
+        .json(&json!({
+            "pandoraId": album.pandora_id
+        }))
+        .header("x-authtoken", auth_token.clone().unwrap())
+        .header("x-csrftoken", csrf_token)
+        .send()
+        .expect("Error getting album details");
+
+    println!(
+        "Album details status code: {:?}",
+        album_details_response.status()
+    );
+
+    // TODO: use response to get pandora id for the track
+
+    let track_id = "TR:159545396";
+
+    // TODO: Generate new device id?
+    let uuid = "b0f37a07-7757-42ab-9125-94a1ef190835";
+
+    let source_response = client
+        .post("https://pandora.com/api/v1/playback/source")
+        .json(&json!({
+            "deviceUuid": uuid,
+            "sourceId": album.pandora_id,
+            "includeSource": true
+        }))
+        .header("x-authtoken", auth_token.clone().unwrap())
+        .header("x-csrftoken", csrf_token)
+        .send()
+        .expect("Error getting source");
+
+    println!(
+        "Playback source status code: {:?}",
+        source_response.status()
+    );
+    println!("{}", source_response.text().unwrap());
 
     play_sample_sound();
 }
@@ -106,8 +154,21 @@ struct LoginResponse {
     pub auth_token: String,
 }
 
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct AlbumResponse {
+    pub items: Vec<Album>,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct Album {
+    pub name: String,
+    pub pandora_id: String,
+}
+
 fn login(client: &Client) -> String {
-    // TODO: once we have a UI, prompt for the password isntead of looking in the environment variables
+    // TODO: once we have a UI, prompt for the password instead of looking in the environment variables
     let password = var("PANDORA_PASSWORD")
         .expect("Error retreiving PANDORA_PASSWORD from environment variables");
 
@@ -137,4 +198,48 @@ fn login(client: &Client) -> String {
         .expect("Error setting keyring secret");
 
     login_response.auth_token
+}
+
+fn get_source_json() -> serde_json::Value {
+    json!({
+        "clientFeatures": [
+            "RewardInteractions",
+            "AudioMessages",
+            "ReturnTrackSourceStationId"
+        ],
+        "deviceProperties": {
+            "app_version": "1.279.0",
+            "browser_id": "Firefox",
+            "browser": "Firefox",
+            "browser_version": "141.0",
+            "client_timestamp": "1754864501024",
+            "date_recorded": "1754864501024",
+            "day": "2025-08-10",
+            "device_code": "1880",
+            "device_id": "1880",
+            "device_uuid": "b0f37a07-7757-42ab-9125-94a1ef190835",
+            "device_os": "Linux",
+            "is_on_demand_user": "true",
+            "listener_id": "90502387",
+            "music_playing": "false",
+            "backgrounded": "false",
+            "page_view": "backstage_album",
+            "site_version": "1.279.0",
+            "vendor_id": 100,
+            "promo_code": "",
+            "campaign_id": null,
+            "tuner_var_flags": "F",
+            "artist_collaborations_enabled": true
+        },
+        "deviceUuid": "b0f37a07-7757-42ab-9125-94a1ef190835",
+        "includeItem": true,
+        "includeSource": true,
+        "index": 0,
+        "onDemandArtistMessageToken": "",
+        "repeat": null,
+        "shuffle": false,
+        "skipExplicitCheck": true,
+        "sortOrder": null,
+        "sourceId": "AL:48210043"
+    })
 }
