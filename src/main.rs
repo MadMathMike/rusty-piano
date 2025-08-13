@@ -20,13 +20,12 @@ fn main() {
     let user = whoami::username();
     let entry = keyring::Entry::new("rusty-piano", &user).expect("Error creating keyring entry");
 
-    // TODO: remove this once we know how to use the auth token
-    entry.delete_credential();
-
     let mut access_token: Option<String> = None;
 
     if let Ok(secret) = entry.get_secret() {
         access_token = Some(String::from_utf8(secret).unwrap());
+        
+        // TODO: check if token is expired
     }
 
     if access_token.is_none() {
@@ -38,6 +37,17 @@ fn main() {
 
         access_token = Some(login_response.access_token)
     }
+
+    let access_token = access_token.unwrap();
+
+    let collection_response = client
+        .get("https://bandcamp.com/api/collectionsync/1/collection")
+        .query(&[("page_size", 10)])
+        .bearer_auth(access_token)
+        .send()
+        .expect("Error calling collection api");
+
+    println!("{}", collection_response.text().unwrap());
 
     rusty_piano::sound::play_sample_sound();
 }
@@ -124,6 +134,8 @@ fn login(client: &Client) -> LoginResponse {
         .json::<LoginResponse>()
         .expect("Failed to parse login response");
 
+    // TODO: check if login_response.ok is true?
+
     println!("{login_response:?}");
 
     login_response
@@ -131,9 +143,9 @@ fn login(client: &Client) -> LoginResponse {
 
 #[derive(Debug, Deserialize)]
 struct LoginResponse {
-    pub ok: bool,
+    // pub ok: bool,
     pub access_token: String,
-    pub token_type: String,
-    pub expires_in: f64,
-    pub refresh_token: String,
+    // pub token_type: String,
+    // pub expires_in: f64,
+    // pub refresh_token: String,
 }
