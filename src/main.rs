@@ -1,16 +1,20 @@
+use reqwest::StatusCode;
 use reqwest::blocking::Client;
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
-use reqwest::StatusCode;
-use serde::Deserialize;
 use std::collections::HashMap;
 use std::env::var;
 use std::fs::File;
-use std::io::{copy, Read};
+use std::io::copy;
+
+use rusty_piano::bandcamp::*;
 
 fn main() {
     let mut default_headers = HeaderMap::default();
     default_headers.append(USER_AGENT, HeaderValue::from_static("rusty-piano/0.1"));
-    default_headers.append("X-Requested-With", HeaderValue::from_static("com.bandcamp.android"));
+    default_headers.append(
+        "X-Requested-With",
+        HeaderValue::from_static("com.bandcamp.android"),
+    );
 
     let client = Client::builder()
         .cookie_store(true)
@@ -26,7 +30,7 @@ fn main() {
 
     if let Ok(secret) = entry.get_secret() {
         access_token = Some(String::from_utf8(secret).unwrap());
-        
+
         // TODO: check if token is expired
         // Question: should we be storing the refresh token as well to make it easier to get a new token?
     }
@@ -46,7 +50,7 @@ fn main() {
     /* offset param used for paging */
     let collection_response = client
         .get("https://bandcamp.com/api/collectionsync/1/collection")
-        .query(&[("page_size", "2"), ("tralbum_type", "a")])
+        .query(&[("page_size", "2"), ("tralbum_type", "a"), ("enc", "alac")])
         .bearer_auth(access_token)
         .send()
         .expect("Error calling collection api");
@@ -72,7 +76,6 @@ fn main() {
 
     copy(&mut download_response, &mut temp_file).unwrap();
 
-
     // let path = "file_example_MP3_2MG.mp3";
     let path = temp_file_path;
     let file = File::open(path).expect("Error opening file");
@@ -90,7 +93,10 @@ fn login(client: &Client) -> LoginResponse {
     params.insert("username", "MichaelPeterson27@live.com".to_owned());
     params.insert("password", password.to_owned());
     params.insert("client_id", "134".to_owned());
-    params.insert("client_secret", "1myK12VeCL3dWl9o/ncV2VyUUbOJuNPVJK6bZZJxHvk=".to_owned());
+    params.insert(
+        "client_secret",
+        "1myK12VeCL3dWl9o/ncV2VyUUbOJuNPVJK6bZZJxHvk=".to_owned(),
+    );
 
     let mut login_request = client
         .post("https://bandcamp.com/oauth_login")
@@ -98,15 +104,25 @@ fn login(client: &Client) -> LoginResponse {
         .build()
         .unwrap();
 
-    let body_bytes = login_request.try_clone().unwrap().body().unwrap().as_bytes().unwrap().to_vec();
+    let body_bytes = login_request
+        .try_clone()
+        .unwrap()
+        .body()
+        .unwrap()
+        .as_bytes()
+        .unwrap()
+        .to_vec();
     let body_string = String::from_utf8(body_bytes).unwrap();
 
     let hashed_body = rusty_piano::crypto::sha1_hex("dtmfa", &body_string);
     let x_bandcamp_dm = HeaderValue::from_str(&hashed_body).unwrap();
 
-    login_request.headers_mut().append("X-Bandcamp-Dm", x_bandcamp_dm);
+    login_request
+        .headers_mut()
+        .append("X-Bandcamp-Dm", x_bandcamp_dm);
 
-    let login_response = client.execute(login_request)
+    let login_response = client
+        .execute(login_request)
         .expect("Error making call to oauth_login");
 
     println!("{:?}", login_response.headers());
@@ -122,11 +138,11 @@ fn login(client: &Client) -> LoginResponse {
     println!("{algorithm}");
     assert_eq!(1, algorithm);
     // Calculate new x-bandcamp-dm header based on int value
-        // if 3 => hmacsha256 of stuff
-        // if 4 => hmacsha512 of stuff?
-        // otherwise
-            // if 1 => hmac_sha1([0..19] + [22..] + body)
-            // else
+    // if 3 => hmacsha256 of stuff
+    // if 4 => hmacsha512 of stuff?
+    // otherwise
+    // if 1 => hmac_sha1([0..19] + [22..] + body)
+    // else
 
     let mut to_hash = String::with_capacity(38);
     to_hash.push_str(&x_bandcamp_dm[0..19]);
@@ -138,16 +154,26 @@ fn login(client: &Client) -> LoginResponse {
         .build()
         .unwrap();
 
-    let body_bytes = login_request.try_clone().unwrap().body().unwrap().as_bytes().unwrap().to_vec();
+    let body_bytes = login_request
+        .try_clone()
+        .unwrap()
+        .body()
+        .unwrap()
+        .as_bytes()
+        .unwrap()
+        .to_vec();
     let body_string = String::from_utf8(body_bytes).unwrap();
     to_hash.push_str(&body_string);
 
     let hashed_body = rusty_piano::crypto::sha1_hex("dtmfa", &to_hash);
     let x_bandcamp_dm = HeaderValue::from_str(&hashed_body).unwrap();
 
-    login_request.headers_mut().append("X-Bandcamp-Dm", x_bandcamp_dm);
+    login_request
+        .headers_mut()
+        .append("X-Bandcamp-Dm", x_bandcamp_dm);
 
-    let login_response = client.execute(login_request)
+    let login_response = client
+        .execute(login_request)
         .expect("Error making call to oauth_login");
 
     println!("Login status code: {:?}", login_response.status());
@@ -167,44 +193,4 @@ fn login(client: &Client) -> LoginResponse {
     println!("{login_response:?}");
 
     login_response
-}
-
-#[derive(Debug, Deserialize)]
-struct LoginResponse {
-    // pub ok: bool,
-    pub access_token: String,
-    // pub token_type: String,
-    // pub expires_in: f64,
-    // pub refresh_token: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct CollectionResponse {
-    pub items: Vec::<Item>
-}
-
-#[derive(Debug, Deserialize)]
-struct Item {
-    pub tralbum_type: String,
-    pub tralbum_id: u32,
-    pub sale_item_type: String, 
-    pub title: String,
-    pub tracks: Vec::<Track>,
-    pub band_info: BandInfo,
-}
-
-#[derive(Debug, Deserialize)]
-struct Track {
-    pub track_id: u32,
-    pub title: String,
-    pub hq_audio_url: String,
-    pub track_number: u8
-}
-
-#[derive(Debug, Deserialize)]
-struct BandInfo {
-    pub band_id: u32,
-    pub name: String,
-    pub bio: String,
-    pub page_url: String,
 }

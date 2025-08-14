@@ -2,6 +2,7 @@
 name = "rusty-piano"
 version = "0.1.0"
 edition = "2024"
+default-run = "rusty-piano"
 
 [dependencies]
 hex = "0.4.3"
