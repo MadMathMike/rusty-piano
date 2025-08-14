@@ -1,5 +1,8 @@
 # Description
+TODO: update all of this to reference bandcamp, which is what I'm switching to!
+
 Goal: build a terminal app using Rust that can play collected albums from your Pandora music account.
+
 
 # Goals
  - [x] Play local mp3 on default media output device

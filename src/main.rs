@@ -4,6 +4,8 @@ use reqwest::StatusCode;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::env::var;
+use std::fs::File;
+use std::io::{copy, Read};
 
 fn main() {
     let mut default_headers = HeaderMap::default();
@@ -26,6 +28,7 @@ fn main() {
         access_token = Some(String::from_utf8(secret).unwrap());
         
         // TODO: check if token is expired
+        // Question: should we be storing the refresh token as well to make it easier to get a new token?
     }
 
     if access_token.is_none() {
@@ -40,16 +43,41 @@ fn main() {
 
     let access_token = access_token.unwrap();
 
+    /* offset param used for paging */
     let collection_response = client
         .get("https://bandcamp.com/api/collectionsync/1/collection")
-        .query(&[("page_size", 10)])
+        .query(&[("page_size", "2"), ("tralbum_type", "a")])
         .bearer_auth(access_token)
         .send()
         .expect("Error calling collection api");
 
-    println!("{}", collection_response.text().unwrap());
+    println!("{:?}", collection_response.status());
 
-    rusty_piano::sound::play_sample_sound();
+    let collection = collection_response
+        .json::<CollectionResponse>()
+        .expect("Failure parsing collection response");
+
+    println!("{collection:?}");
+
+    // Download track to temp location
+    let track = collection.items.first().unwrap().tracks.first().unwrap();
+    let url = &track.hq_audio_url;
+    let mut temp_dir = std::env::temp_dir();
+    temp_dir.push(format!("{}.mp3", track.track_id));
+    let temp_file_path = temp_dir.as_path();
+    let mut temp_file = File::create(temp_file_path).unwrap();
+
+    let mut download_response = client.get(url).send().expect("Error downloading file");
+    assert_eq!(StatusCode::OK, download_response.status());
+
+    copy(&mut download_response, &mut temp_file).unwrap();
+
+
+    // let path = "file_example_MP3_2MG.mp3";
+    let path = temp_file_path;
+    let file = File::open(path).expect("Error opening file");
+
+    rusty_piano::sound::play_source_sample(file);
 }
 
 fn login(client: &Client) -> LoginResponse {
@@ -148,4 +176,35 @@ struct LoginResponse {
     // pub token_type: String,
     // pub expires_in: f64,
     // pub refresh_token: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct CollectionResponse {
+    pub items: Vec::<Item>
+}
+
+#[derive(Debug, Deserialize)]
+struct Item {
+    pub tralbum_type: String,
+    pub tralbum_id: u32,
+    pub sale_item_type: String, 
+    pub title: String,
+    pub tracks: Vec::<Track>,
+    pub band_info: BandInfo,
+}
+
+#[derive(Debug, Deserialize)]
+struct Track {
+    pub track_id: u32,
+    pub title: String,
+    pub hq_audio_url: String,
+    pub track_number: u8
+}
+
+#[derive(Debug, Deserialize)]
+struct BandInfo {
+    pub band_id: u32,
+    pub name: String,
+    pub bio: String,
+    pub page_url: String,
 }
