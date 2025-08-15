@@ -1,7 +1,7 @@
 use hmac::{Hmac, Mac};
 use sha1::Sha1;
 
-pub fn sha1_hex(key: &str, input: &str) -> String {
+pub fn hmac_sha1_as_hex(key: &str, input: &str) -> String {
     // The hmac-sha1 crate recommended using the sha1 and hmac crates directly:
     let mut hasher: Hmac<Sha1> =
         Mac::new_from_slice(key.as_bytes()).expect("HMAC algoritms can take keys of any size");
@@ -20,7 +20,7 @@ mod tests {
         let key = "dtmfa";
         let input = "grant_type=password&username=&password=&client_id=134&client_secret=1myK12VeCL3dWl9o%2FncV2VyUUbOJuNPVJK6bZZJxHvk%3D";
 
-        let hash = sha1_hex(key, input);
+        let hash = hmac_sha1_as_hex(key, input);
 
         assert_eq!(hash, "09a83c762449f224f79ee514b9f3202b5798de10");
     }
