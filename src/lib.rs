@@ -1,5 +1,6 @@
 pub mod bandcamp;
 pub mod crypto;
+pub mod secrets;
 
 pub mod sound {
     use std::{fs::File, thread::sleep};

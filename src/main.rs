@@ -7,6 +7,7 @@ use std::fs::File;
 use std::io::copy;
 
 use rusty_piano::bandcamp::*;
+use rusty_piano::secrets::*;
 
 fn main() {
     let mut default_headers = HeaderMap::default();
@@ -22,25 +23,12 @@ fn main() {
         .build()
         .unwrap();
 
-    // Try to read from keyring
-    let user = whoami::username();
-    let entry = keyring::Entry::new("rusty-piano", &user).expect("Error creating keyring entry");
-
-    let mut access_token: Option<String> = None;
-
-    if let Ok(secret) = entry.get_secret() {
-        access_token = Some(String::from_utf8(secret).unwrap());
-
-        // TODO: check if token is expired
-        // Question: should we be storing the refresh token as well to make it easier to get a new token?
-    }
+    let mut access_token = get_access_token();
 
     if access_token.is_none() {
         let login_response = login(&client);
 
-        entry
-            .set_secret(login_response.access_token.as_bytes())
-            .expect("Error setting keyring secret");
+        store_access_token(&login_response.access_token);
 
         access_token = Some(login_response.access_token)
     }
