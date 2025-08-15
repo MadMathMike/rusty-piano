@@ -47,6 +47,10 @@ impl BandCampClient {
             "1myK12VeCL3dWl9o/ncV2VyUUbOJuNPVJK6bZZJxHvk=",
         );
 
+        // TODO: Instead of building a request, getting the body, then calculating the x-bandcamp-dm header
+        // Manually construct the string body so the x-bandcamp-dm header can be calculated before creating
+        // the request object.
+
         let mut login_request = self
             .client
             .post("https://bandcamp.com/oauth_login")
@@ -54,17 +58,10 @@ impl BandCampClient {
             .build()
             .unwrap();
 
-        let body_bytes = login_request
-            .try_clone()
-            .unwrap()
-            .body()
-            .unwrap()
-            .as_bytes()
-            .unwrap()
-            .to_vec();
-        let body_string = String::from_utf8(body_bytes).unwrap();
+        let login_request_clone = login_request.try_clone().unwrap();
+        let body_bytes = login_request_clone.body().unwrap().as_bytes().unwrap();
 
-        let hashed_body = crypto::hmac_sha1_as_hex("dtmfa", &body_string);
+        let hashed_body = crypto::hmac_sha1_from_bytes_as_hex("dtmfa", body_bytes);
         let x_bandcamp_dm = HeaderValue::from_str(&hashed_body).unwrap();
 
         login_request

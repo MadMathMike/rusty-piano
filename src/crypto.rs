@@ -1,14 +1,19 @@
 use hmac::{Hmac, Mac};
 use sha1::Sha1;
 
-pub fn hmac_sha1_as_hex(key: &str, input: &str) -> String {
+pub fn hmac_sha1_as_hex(key: &str, input: &str) -> String { 
+    hmac_sha1_from_bytes_as_hex(key, input.as_bytes())
+}
+
+pub fn hmac_sha1_from_bytes_as_hex(key: &str, input: &[u8]) -> String {
     // The hmac-sha1 crate recommended using the sha1 and hmac crates directly:
     let mut hasher: Hmac<Sha1> =
         Mac::new_from_slice(key.as_bytes()).expect("HMAC algoritms can take keys of any size");
-    hasher.update(input.as_bytes());
+    hasher.update(input);
     let hmac: [u8; 20] = hasher.finalize().into_bytes().into();
 
     hex::encode(hmac)
+
 }
 
 #[cfg(test)]
