@@ -14,6 +14,7 @@ pub struct BandCampClient {
     client: Client,
 }
 
+#[allow(clippy::new_without_default)]
 impl BandCampClient {
     pub fn new() -> Self {
         let mut default_headers = HeaderMap::default();
@@ -145,12 +146,6 @@ impl BandCampClient {
         collection_response
             .json::<CollectionResponse>()
             .expect("Failure parsing collection response")
-    }
-}
-
-impl Default for BandCampClient {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
