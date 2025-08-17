@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap};
 
 use reqwest::{
     StatusCode,
@@ -12,11 +12,12 @@ use crate::crypto;
 // TODO: This will probably be a good place to keep auth_tokens and refresh_tokens for future calls...
 pub struct BandCampClient {
     client: Client,
+    token: Option<String>
 }
 
 #[allow(clippy::new_without_default)]
 impl BandCampClient {
-    pub fn new() -> Self {
+    fn new() -> Self {
         let mut default_headers = HeaderMap::default();
         default_headers.append(USER_AGENT, HeaderValue::from_static("rusty-piano/0.1"));
         default_headers.append(
@@ -31,13 +32,39 @@ impl BandCampClient {
             .build()
             .expect("Error creating reqwest client");
 
-        Self { client }
+        Self { client, token: None }
+    }
+
+    pub fn init(username: &str, password: &str) -> Option<(BandCampClient, String)> {
+        let mut bandcamp_client = BandCampClient::new();
+        let login_response = bandcamp_client.login(username, password);
+
+        bandcamp_client.token = Some(login_response.access_token.clone());
+        Some((bandcamp_client, login_response.access_token))
+    }
+    
+    pub fn init_with_token(token: String) -> Option<BandCampClient> {
+        let mut bandcamp_client = BandCampClient::new();
+        let collection_response = bandcamp_client
+            .client
+            .get("https://bandcamp.com/api/collectionsync/1/collection")
+            .query(&[("page_size", "1"), ("tralbum_type", "a"), ("enc", "alac")])
+            .bearer_auth(token.clone())
+            .send()
+            .expect("Error calling collection api");
+
+        if StatusCode::is_success(&collection_response.status()) {
+            bandcamp_client.token = Some(token);
+            Some(bandcamp_client)
+        } else {
+            None
+        }
     }
 
     // TODO: If the re-auth flow using the refresh_token is ever figured out, add the refresh_token as a parameter (maybe)
     // https://github.com/Metalnem/bandcamp-downloader
     // https://mijailovic.net/2024/04/04/bandcamp-auth/
-    pub fn login(&self, username: &str, password: &str) -> LoginResponse {
+    fn login(&self, username: &str, password: &str) -> LoginResponse {
         let mut params = HashMap::new();
         params.insert("username", username);
         params.insert("password", password);
@@ -126,20 +153,24 @@ impl BandCampClient {
 
         assert_eq!(login_response.status(), StatusCode::OK);
 
+        // println!("{:?}", login_response.text().unwrap());
+
         // TODO: if parsing fails, it could be because we received a response like this:
         // {"error":"emailVerificationRequired","error_description":"Please first re-verify your account using the link we just emailed to you."}
+        // {"error":"nameNoMatch","error_description":"Unknown username or email"}
         // TODO: check if login_response.ok is true?
         login_response
             .json::<LoginResponse>()
             .expect("Failed to parse login response")
     }
 
-    pub fn get_collection(&self, access_token: String) -> CollectionResponse {
+    // Note: offset param used for paging
+    pub fn get_collection(&self) -> CollectionResponse {
         let collection_response = self
             .client
             .get("https://bandcamp.com/api/collectionsync/1/collection")
             .query(&[("page_size", "2"), ("tralbum_type", "a"), ("enc", "alac")])
-            .bearer_auth(access_token)
+            .bearer_auth(self.token.clone().expect("Uninitialized client"))
             .send()
             .expect("Error calling collection api");
 
@@ -151,7 +182,7 @@ impl BandCampClient {
 
 #[derive(Debug, Deserialize)]
 pub struct LoginResponse {
-    // pub ok: bool,
+    pub ok: bool,
     pub access_token: String,
     // pub token_type: String,
     // pub expires_in: u32,
