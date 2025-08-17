@@ -186,7 +186,7 @@ pub struct LoginResponse {
     pub access_token: String,
     // pub token_type: String,
     // pub expires_in: u32,
-    // pub refresh_token: String,
+    pub refresh_token: String,
 }
 
 #[derive(Debug, Deserialize)]
