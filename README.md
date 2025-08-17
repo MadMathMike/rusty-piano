@@ -1,31 +1,26 @@
 # Description
-TODO: update all of this to reference bandcamp, which is what I'm switching to!
-
-Goal: build a terminal app using Rust that can play collected albums from your Pandora music account.
+Goal: build a terminal app using Rust that can play collected albums from your ~~Pandora~~ music account.
 
 
 # Goals
- - [x] Play local mp3 on default media output device
- - [x] Authenticate with Pandora API
-   - [x] ~Partner login~ Switched to REST API so this isn't needed
-   - [x] ~Blowfish cipher~
-   - [x] User authentication
- - [ ] Find a way to store/re-use auth-token to prevent getting flagged as a bot?
- - [ ] Securely store user credentials in system wallet? (After UI is implemented, probably)
- - [ ] Request album list
- - [ ] Play single song from album
- - [ ] Play songs from album consecutively
- - [ ] UI: View albums
- - [ ] UI: View songs in album
- - [ ] UI: Playback controls 
- - [ ] UI: Song progress
- - [ ] UI: Navigation while album playing
- - [ ] Stretch: Code: create macro to derive "pandora_response" (to auto-implement "stat" and "result" fields)
- - [ ] Stretch: Offline mode
- - [ ] Stretch: Local playlists
- - [ ] Stretch: Downloading progress bar (for slow connections)
- - [ ] Stretch: Debug logging for trouble shooting?
- - [ ] Stretch: Album/Song searching and collecting
+- [x] Play local mp3 on default media output device
+- [x] Authenticate with ~~Pandora~~ Bandcamp API
+- [ ] Find a way to store/re-use auth-token to prevent getting flagged as a bot?
+- [x] Securely store user credentials in system wallet? (After UI is implemented, probably)
+- [x] Request album list
+- [x] Play single song from album
+- [ ] Play songs from album consecutively
+- [ ] UI: View albums
+- [ ] UI: View songs in album
+- [ ] UI: Playback controls 
+- [ ] UI: Song progress
+- [ ] UI: Navigation while album playing
+- [ ] Stretch: Code: create macro to derive "pandora_response" (to auto-implement "stat" and "result" fields)
+- [ ] Stretch: Offline mode
+- [ ] Stretch: Local playlists
+- [ ] Stretch: Downloading progress bar (for slow connections)
+- [ ] Stretch: Debug logging for trouble shooting?
+- [ ] Stretch: Album/Song searching and collecting
 
 # Lessons
 ### Playback
@@ -42,6 +37,14 @@ error[E0554]: `#![feature]` may not be used on the stable release channel
 Switched to [rodio](https://crates.io/crates/rodio).
  - Similar dependencies: https://github.com/RustAudio/rodio?tab=readme-ov-file#dependencies-linux-only
 
+### Keyring
+Crate: 
+ - Seems to require dbus-devel
+
+### Bandcamp
+Thank the gods for this guy: https://mijailovic.net/2024/04/04/bandcamp-auth/ and https://github.com/Metalnem/bandcamp-downloader
+
+## Archive
 ### Pandora
 Pandora web app uses REST API: https://6xq.net/pandora-apidoc
 
@@ -49,7 +52,3 @@ Using cookies and setting a user-agent header help prevent xperimeter from flagg
 (ChatGPT really helped me figure this out)
 
 Useful webtools filter `-collector -stats -/radio-health -getVersion -tzm.px-cloud.net -ingest.sentry.io`
-
-### Keyring
-Crate: 
- - Seems to require dbus-devel
