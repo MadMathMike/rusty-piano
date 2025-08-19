@@ -1,79 +1,68 @@
-use reqwest::StatusCode;
-use std::env::var;
-use std::fs::File;
-use std::io::copy;
+use crossterm::event::{KeyCode, KeyEventKind};
+use ratatui::{layout::{Constraint, Direction, Layout}, widgets::{Block, Borders, Paragraph}};
 
-use rusty_piano::{bandcamp::*, secrets::*};
+type Result = color_eyre::Result<()>;
 
-fn main() {
-    // TODO: Add option to bypass authentication to support offline-mode play
+fn main() -> Result {
+    let mut terminal = ratatui::init(); // Puts the terminal in raw mode, which disables line buffering (so rip to ctrl+c response)
+
+    let mut app = App::default();
+
+    app.run(&mut terminal)?;
+
+    ratatui::restore(); // Returns the terminal back to normal mode
     
-    let client = match get_access_token() {
-        Some(token) => BandCampClient::init_with_token(token.clone()).or_else(login),
-        None => login(),
-    }.expect("Failed initialization. Bad token or credentials. Or something...");
-
-    let collection = client.get_collection();
-
-    println!("{collection:?}");
-
-    // Download track to temp location
-    let track = collection.items.first().unwrap().tracks.first().unwrap();
-    let url = &track.hq_audio_url;
-    let mut temp_dir = std::env::temp_dir();
-    temp_dir.push(format!("{}.mp3", track.track_id));
-    let temp_file_path = temp_dir.as_path();
-    let mut temp_file = File::create(temp_file_path).unwrap();
-
-    let mut download_response = reqwest::blocking::Client::new()
-        .get(url)
-        .send()
-        .expect("Error downloading file");
-    assert_eq!(StatusCode::OK, download_response.status());
-
-    copy(&mut download_response, &mut temp_file).unwrap();
-
-    // let path = "file_example_MP3_2MG.mp3";
-    let path = temp_file_path;
-    let file = File::open(path).expect("Error opening file");
-
-    rusty_piano::sound::play_source_sample(file);
+    Ok(()) 
 }
 
-fn login() -> Option<BandCampClient> {
-    println!("Attempting login...");
-
-    let username = var("BANDCAMP_USERNAME")
-        .map_or(None, |username| {
-            if username.is_empty() {
-                None
-            } else {
-                Some(username)
-            }
-        })
-        .unwrap_or_else(|| prompt("username"));
-
-    let password = var("BANDCAMP_PASSWORD")
-        .map_or(None, |username| {
-            if username.is_empty() {
-                None
-            } else {
-                Some(username)
-            }
-        })
-        .unwrap_or_else(|| prompt("password"));
-
-    BandCampClient::init(&username, &password).map(|tuple| {
-        store_access_token(&tuple.1);
-        tuple.0
-    })
+#[derive(Debug, Default)]
+pub struct App {
+    exit: bool
 }
 
-fn prompt(param: &str) -> String {
-    println!("Enter your bandcamp {}:", param);
-    let mut input = String::new();
-    std::io::stdin()
-        .read_line(&mut input)
-        .expect("Error reading standard in");
-    input
+impl App {
+    fn run(&mut self, terminal: &mut ratatui::Terminal<ratatui::prelude::CrosstermBackend<std::io::Stdout>>) -> Result {
+        
+        while !self.exit {
+
+            terminal.draw(|frame| {
+                let outer_layout = Layout::default()
+                    .direction(Direction::Vertical)
+                    .margin(1)
+                    .constraints(vec![
+                        Constraint::Length(1),
+                        Constraint::Fill(1),
+                        Constraint::Length(3),
+                    ])
+                    .split(frame.area());
+
+                let body = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints(vec![
+                        Constraint::Percentage(40),
+                        Constraint::Percentage(60),
+                    ])
+                    .split(outer_layout[1]);
+                    
+                frame.render_widget("hello world", outer_layout[0]);
+                frame.render_widget(
+                    Paragraph::new("Left").block(Block::new().borders(Borders::ALL)),
+                    body[0]
+                );
+                frame.render_widget(
+                    Paragraph::new("Right").block(Block::new().borders(Borders::ALL)),
+                    body[1]
+                );
+                frame.render_widget("woah", outer_layout[2]);
+            })?;
+
+            if let crossterm::event::Event::Key(key_event) = crossterm::event::read()? {
+                if key_event.kind == KeyEventKind::Press && key_event.code == KeyCode::Char('q') {
+                    self.exit = true;
+                }
+            }
+        }
+
+        Ok(())
+    }
 }

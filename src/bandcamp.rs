@@ -182,7 +182,7 @@ impl BandCampClient {
 
 #[derive(Debug, Deserialize)]
 pub struct LoginResponse {
-    pub ok: bool,
+    // pub ok: bool,
     pub access_token: String,
     // pub token_type: String,
     // pub expires_in: u32,

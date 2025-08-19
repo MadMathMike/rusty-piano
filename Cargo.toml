@@ -5,13 +5,16 @@ edition = "2024"
 default-run = "rusty-piano"
 
 [dependencies]
+color-eyre = "0.6.5"
+crossterm = "0.29.0"
 hex = "0.4.3"
 hmac = "0.12.1"
 keyring = { version = "3.6.3", features = ["sync-secret-service"] }
-reqwest = { version = "0.12.22", features = ["blocking", "json", "cookies"] }
+ratatui = "0.29.0"
+reqwest = { version = "0.12.23", features = ["blocking", "json", "cookies"] }
 rodio = { version = "0.21.1", default-features = false, features = ["playback", "mp3"]}
 serde = { version = "1.0.219", features = ["derive"]}
 serde_json = "1.0.142"
 sha1 = "0.10.6"
-uuid = "1.17.0"
-whoami = "1.6.0"
+uuid = "1.18.0"
+whoami = "1.6.1"
