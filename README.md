@@ -1,26 +1,26 @@
 # Description
 Goal: build a terminal app using Rust that can play collected albums from your ~~Pandora~~ music account.
 
-
 # Goals
 - [x] Play local mp3 on default media output device
 - [x] Authenticate with ~~Pandora~~ Bandcamp API
-- [ ] Find a way to store/re-use auth-token to prevent getting flagged as a bot?
-- [x] Securely store user credentials in system wallet? (After UI is implemented, probably)
+- [x] Find a way to store/re-use auth-token to prevent getting flagged as a bot?
 - [x] Request album list
 - [x] Play single song from album
+- [ ] Pull down (and cache?) entire collection (must use paging)
 - [ ] Play songs from album consecutively
-- [ ] UI: View albums
 - [ ] UI: View songs in album
+- [ ] UI: View albums
 - [ ] UI: Playback controls 
 - [ ] UI: Song progress
 - [ ] UI: Navigation while album playing
-- [ ] Stretch: Code: create macro to derive "pandora_response" (to auto-implement "stat" and "result" fields)
+- [ ] Stretch: Dynamically parse BandCamp responses to error model vs happy-path model
 - [ ] Stretch: Offline mode
 - [ ] Stretch: Local playlists
 - [ ] Stretch: Downloading progress bar (for slow connections)
 - [ ] Stretch: Debug logging for trouble shooting?
 - [ ] Stretch: Album/Song searching and collecting
+- [ ] Stretch: Re-auth flow
 
 # Lessons
 ### Playback

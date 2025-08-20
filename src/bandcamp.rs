@@ -153,15 +153,18 @@ impl BandCampClient {
 
         assert_eq!(login_response.status(), StatusCode::OK);
 
-        // println!("{:?}", login_response.text().unwrap());
+        let response_body = login_response.text().unwrap();
+
+        println!("{}", &response_body);
 
         // TODO: if parsing fails, it could be because we received a response like this:
         // {"error":"emailVerificationRequired","error_description":"Please first re-verify your account using the link we just emailed to you."}
         // {"error":"nameNoMatch","error_description":"Unknown username or email"}
         // TODO: check if login_response.ok is true?
-        login_response
-            .json::<LoginResponse>()
-            .expect("Failed to parse login response")
+        // login_response
+        //     .json::<LoginResponse>()
+        //     .expect("Failed to parse login response")
+        serde_json::from_str::<LoginResponse>(&response_body).expect("Failed to parse login response")
     }
 
     // Note: offset param used for paging
