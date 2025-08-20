@@ -48,6 +48,5 @@ fn prompt(param: &str) -> String {
     std::io::stdin()
         .read_line(&mut input)
         .expect("Error reading standard in");
-    // TODO: new_line from end to hopefully modify in place instead of calling "to_owned"
-    input.trim().to_owned()
+    input.trim_end().to_owned()
 }

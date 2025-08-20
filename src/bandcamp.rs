@@ -1,18 +1,18 @@
-use std::{collections::HashMap};
+use std::collections::HashMap;
 
 use reqwest::{
     StatusCode,
     blocking::Client,
     header::{HeaderMap, HeaderValue, USER_AGENT},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::crypto;
 
 // TODO: This will probably be a good place to keep auth_tokens and refresh_tokens for future calls...
 pub struct BandCampClient {
     client: Client,
-    token: Option<String>
+    token: Option<String>,
 }
 
 #[allow(clippy::new_without_default)]
@@ -25,14 +25,16 @@ impl BandCampClient {
             HeaderValue::from_static("com.bandcamp.android"),
         );
 
-        // TODO: figure out debug logging or something? Maybe it can be configured on the reqwest client?
         let client = Client::builder()
             .cookie_store(true)
             .default_headers(default_headers)
             .build()
             .expect("Error creating reqwest client");
 
-        Self { client, token: None }
+        Self {
+            client,
+            token: None,
+        }
     }
 
     pub fn init(username: &str, password: &str) -> Option<(BandCampClient, String)> {
@@ -42,7 +44,7 @@ impl BandCampClient {
         bandcamp_client.token = Some(login_response.access_token.clone());
         Some((bandcamp_client, login_response.access_token))
     }
-    
+
     pub fn init_with_token(token: String) -> Option<BandCampClient> {
         let mut bandcamp_client = BandCampClient::new();
         let collection_response = bandcamp_client
@@ -53,7 +55,11 @@ impl BandCampClient {
             .send()
             .expect("Error calling collection api");
 
-        if StatusCode::is_success(&collection_response.status()) {
+        let status_code = collection_response.status();
+        let response_body = collection_response.text().unwrap();
+        println!("{}", &response_body);
+
+        if StatusCode::is_success(&status_code) {
             bandcamp_client.token = Some(token);
             Some(bandcamp_client)
         } else {
@@ -155,6 +161,7 @@ impl BandCampClient {
 
         let response_body = login_response.text().unwrap();
 
+        // TODO: figure out debug logging or something? Maybe it can be configured on the reqwest client?
         println!("{}", &response_body);
 
         // TODO: if parsing fails, it could be because we received a response like this:
@@ -164,21 +171,33 @@ impl BandCampClient {
         // login_response
         //     .json::<LoginResponse>()
         //     .expect("Failed to parse login response")
-        serde_json::from_str::<LoginResponse>(&response_body).expect("Failed to parse login response")
+        serde_json::from_str::<LoginResponse>(&response_body)
+            .expect("Failed to parse login response")
     }
 
     // Note: offset param used for paging
-    pub fn get_collection(&self) -> CollectionResponse {
+    pub fn get_collection(&self, page_size: usize, offset: &str) -> CollectionResponse {
+        let mut query = vec![
+                ("page_size", page_size.to_string()),
+                ("tralbum_type", "a".to_owned()),
+                ("enc", "alac".to_owned()),
+            ];
+        if !offset.is_empty() {
+            query.push(("offset", offset.to_owned()));
+        }
         let collection_response = self
             .client
             .get("https://bandcamp.com/api/collectionsync/1/collection")
-            .query(&[("page_size", "2"), ("tralbum_type", "a"), ("enc", "alac")])
+            .query(&query)
             .bearer_auth(self.token.clone().expect("Uninitialized client"))
             .send()
             .expect("Error calling collection api");
 
-        collection_response
-            .json::<CollectionResponse>()
+        let response_body = collection_response.text().unwrap();
+
+        println!("{}", &response_body);
+
+        serde_json::from_str::<CollectionResponse>(&response_body)
             .expect("Failure parsing collection response")
     }
 }
@@ -197,7 +216,7 @@ pub struct CollectionResponse {
     pub items: Vec<Item>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Item {
     pub tralbum_type: String,
     pub tralbum_id: u32,
@@ -205,9 +224,10 @@ pub struct Item {
     pub title: String,
     pub tracks: Vec<Track>,
     pub band_info: BandInfo,
+    pub token: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Track {
     pub track_id: u32,
     pub title: String,
@@ -215,7 +235,7 @@ pub struct Track {
     pub track_number: u8,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct BandInfo {
     pub band_id: u32,
     pub name: String,

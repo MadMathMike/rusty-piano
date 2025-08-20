@@ -9,7 +9,7 @@ fn main() {
 
     let client = authenticate_with_bandcamp();
 
-    let collection = client.get_collection();
+    let collection = client.get_collection(1, "");
 
     println!("{collection:?}");
 
