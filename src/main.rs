@@ -1,14 +1,13 @@
-use color_eyre::Result;
+use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEventKind};
 use ratatui::{
-    layout::{Constraint, Direction, Layout}, style::Style, text::Line, widgets::{Block, Borders, List, ListItem, Paragraph, Widget}
+    layout::{Constraint, Direction, Layout}, widgets::{Block, Borders, List, Paragraph}
 };
 use rusty_piano::{bandcamp::Item, collection::read_collection};
 
 fn main() -> Result<()> {
     let collection = read_collection();
 
-    color_eyre::install()?;
     let mut terminal = ratatui::init(); // Puts the terminal in raw mode, which disables line buffering (so rip to ctrl+c response)
 
     let mut app = App::new(collection);
@@ -16,7 +15,6 @@ fn main() -> Result<()> {
     app.run(&mut terminal)?;
 
     ratatui::restore(); // Returns the terminal back to normal mode
-
     Ok(())
 }
 
