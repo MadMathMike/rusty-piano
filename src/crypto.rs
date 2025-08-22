@@ -13,7 +13,6 @@ pub fn hmac_sha1_from_bytes_as_hex(key: &str, input: &[u8]) -> String {
     let hmac: [u8; 20] = hasher.finalize().into_bytes().into();
 
     hex::encode(hmac)
-
 }
 
 #[cfg(test)]

@@ -16,6 +16,8 @@ pub fn play_track(track: &Track) {
         .send()
         .expect("Error downloading file");
     assert_eq!(StatusCode::OK, download_response.status());
+
+    // TODO: Return an error when Bandcamp returns a 410
     // Bandcamp will return a 410, Gone response when the link is no longer valid
     // I suspect the link is only valid for some amount of time.
     // Maybe as long as the access token, which is about an hour. Not sure.

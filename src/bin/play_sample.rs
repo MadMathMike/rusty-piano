@@ -1,4 +1,4 @@
-use rusty_piano::{app::authenticate_with_bandcamp, collection::read_collection, player::play_track};
+use rusty_piano::{collection::read_collection, player::play_track};
 
 fn main() {
     // TODO: Add option to bypass authentication to support offline-mode play

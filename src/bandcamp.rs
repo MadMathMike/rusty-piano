@@ -9,7 +9,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::crypto;
 
-// TODO: This will probably be a good place to keep auth_tokens and refresh_tokens for future calls...
 pub struct BandCampClient {
     client: Client,
     token: Option<String>,
@@ -175,13 +174,32 @@ impl BandCampClient {
             .expect("Failed to parse login response")
     }
 
+    // TODO: would be fun to turn this into an iter
+    pub fn get_entire_collection(&self, page_size: usize) -> Vec<Item> {
+        let mut offset = String::new();
+        let mut items: Vec<Item> = Vec::new();
+        loop {
+            let response = self.get_collection(page_size, &offset);
+            let token = response
+                .items
+                .last()
+                .map_or(String::new(), |i| i.token.clone());
+            items.extend(response.items);
+            if token.is_empty() {
+                break;
+            }
+            offset = token;
+        }
+        items
+    }
+
     // Note: offset param used for paging
-    pub fn get_collection(&self, page_size: usize, offset: &str) -> CollectionResponse {
+    fn get_collection(&self, page_size: usize, offset: &str) -> CollectionResponse {
         let mut query = vec![
-                ("page_size", page_size.to_string()),
-                ("tralbum_type", "a".to_owned()),
-                ("enc", "alac".to_owned()),
-            ];
+            ("page_size", page_size.to_string()),
+            ("tralbum_type", "a".to_owned()),
+            ("enc", "alac".to_owned()),
+        ];
         if !offset.is_empty() {
             query.push(("offset", offset.to_owned()));
         }

@@ -12,6 +12,9 @@ use rusty_piano::{bandcamp::Item, collection::read_collection};
 fn main() -> Result<()> {
     let collection = read_collection();
 
+    // TODO: If there is a problem reading the collection (or the collection is empty), 
+        // prompt authentication and collection caching
+
     let mut terminal = ratatui::init(); // Puts the terminal in raw mode, which disables line buffering (so rip to ctrl+c response)
 
     let mut app_state = AppState::new(collection);
@@ -65,7 +68,8 @@ pub struct AppState {
 
 impl AppState {
     fn new(collection: Vec<Item>) -> Self {
-        let album_list_state = ListState::default();
+        let mut album_list_state = ListState::default();
+        album_list_state.select(Some(0));
 
         AppState {
             exit: false,

@@ -3,7 +3,7 @@ use std::{
     io::{BufRead, BufReader},
 };
 
-use crate::{app::authenticate_with_bandcamp, bandcamp::Item};
+use crate::bandcamp::{Item};
 
 use std::io::Write;
 
@@ -16,33 +16,7 @@ pub fn read_collection() -> Vec<Item> {
         .collect()
 }
 
-pub fn cache_collection() {
-    let client = authenticate_with_bandcamp();
-
-    // TODO: move this to bandcamp module (probably) and support multiple page sizes
-    let page_size = 5;
-    let mut offset = String::new();
-    let mut items: Vec<Item> = Vec::new();
-    loop {
-        let response = client.get_collection(page_size, &offset);
-        let token = response
-            .items
-            .last()
-            .map_or(String::new(), |i| i.token.clone());
-        items.extend(response.items);
-        if token.is_empty() {
-            break;
-        }
-        offset = token;
-    }
-
-    let unique_count = items
-        .iter()
-        .map(|i| i.tralbum_id)
-        .collect::<std::collections::HashSet<_>>()
-        .len();
-    assert_eq!(7, unique_count);
-
+pub fn write_collection(items: Vec<Item>) {
     let mut file = File::create("collection.jsonl").expect("Error creating file handle");
     for line in items.iter().map(|i| serde_json::to_string(i).unwrap()) {
         file.write_all(line.as_bytes())
@@ -51,3 +25,5 @@ pub fn cache_collection() {
             .expect("Error writing to file");
     }
 }
+
+// TODO: Add unit tests
