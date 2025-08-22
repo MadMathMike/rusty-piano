@@ -10,10 +10,8 @@ use rusty_piano::player::play_track;
 use rusty_piano::{bandcamp::Item, collection::read_collection};
 
 fn main() -> Result<()> {
+    // TODO: If there is a problem reading the collection (or the collection is empty), prompt authentication and collection caching
     let collection = read_collection();
-
-    // TODO: If there is a problem reading the collection (or the collection is empty), 
-        // prompt authentication and collection caching
 
     let mut terminal = ratatui::init(); // Puts the terminal in raw mode, which disables line buffering (so rip to ctrl+c response)
 

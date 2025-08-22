@@ -1,8 +1,9 @@
-use std::{fs::File, io::copy};
+use std::{fs::File, io::copy, thread::sleep};
 
 use reqwest::StatusCode;
+use rodio::{Decoder, OutputStreamBuilder};
 
-use crate::{bandcamp::Track, sound::play_source_sample};
+use crate::bandcamp::Track;
 
 pub fn play_track(track: &Track) {
     let url = &track.hq_audio_url;
@@ -29,4 +30,19 @@ pub fn play_track(track: &Track) {
     let file = File::open(path).expect("Error opening file");
 
     play_source_sample(file);
+}
+
+fn play_source_sample(file: File) {
+    let stream_handle =
+        OutputStreamBuilder::open_default_stream().expect("Error opening default audio stream");
+
+    // TODO: What is this doing?
+    let _sink = rodio::Sink::connect_new(stream_handle.mixer());
+
+    let source = Decoder::try_from(file).expect("Error decoding file");
+    // Play the sound directly on the device
+    stream_handle.mixer().add(source);
+
+    // Note that playback stops when the sink is dropped, which is why we sleep for a bit
+    sleep(std::time::Duration::from_secs(5));
 }
