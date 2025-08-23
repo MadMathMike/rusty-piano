@@ -1,4 +1,8 @@
-use anyhow::{Context, Ok, Result};
+use std::sync::mpsc;
+use std::thread::{self, sleep};
+use std::time::Duration;
+
+use anyhow::{Context, Result};
 use crossterm::event::{KeyCode, KeyEventKind};
 use ratatui::prelude::*;
 use ratatui::widgets::ListState;
@@ -6,7 +10,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout},
     widgets::{Block, Borders, List, Paragraph},
 };
-use rusty_piano::player::play_track;
+use rusty_piano::player::{play_track, PlaybackCommands};
 use rusty_piano::{bandcamp::Item, collection::read_collection};
 
 fn main() -> Result<()> {
@@ -17,6 +21,26 @@ fn main() -> Result<()> {
 
     let mut app_state = AppState::new(collection);
 
+    let (channel_tx, channel_rx) = mpsc::channel::<PlaybackCommands>();
+
+    let player_thread = thread::spawn(move|| {
+        // TODO: Make sure this can respond to events while music is playing
+        // Or at least the exit event. Events that are sent to the channel 
+        // do back up like a queue though (which makes sense).
+        while let Ok(command) = channel_rx.recv()
+        {
+            // TODO: Question, how does polling rate affect usability and CPU resource consumption? Can I poll too fast?
+            sleep(Duration::from_millis(100));
+            match command {
+                PlaybackCommands::Exit => break,
+                // TODO: either the player or this thread will need to handle stopping currently playing songs to switch to the new song
+                PlaybackCommands::Play(track) => play_track(&track),
+            }
+        }
+    });
+
+    // TODO: what happens if we error out before we can send the exit command to the player? 
+    // Do we orphan a thread? Or does the process hang?
     while !app_state.exit {
         terminal.draw(|frame| {
             draw(frame, &mut app_state)
@@ -30,7 +54,7 @@ fn main() -> Result<()> {
                     KeyCode::Enter => {
                         if let Some(selected) = app_state.album_list_state.selected() {
                             if let Some(track) = app_state.collection.get(selected).map(|item|item.tracks.first().expect("Should not have any empty albums")){
-                                play_track(track);
+                                channel_tx.send(PlaybackCommands::Play(track.clone()))?;
                             }
                         }
                     },
@@ -40,7 +64,11 @@ fn main() -> Result<()> {
                     KeyCode::Down => {
                         app_state.album_list_state.scroll_down_by(1);
                     }
-                    KeyCode::Char('q') => app_state.exit = true,
+                    KeyCode::Char('q') => {
+                        // TODO: can the OS cleanup abandoned threads?
+                        channel_tx.send(PlaybackCommands::Exit)?;
+                        app_state.exit = true
+                    },
                     KeyCode::Char(_) => todo!(),
                     KeyCode::Null => todo!(),
                     // KeyCode::Esc => todo!(),
@@ -52,6 +80,10 @@ fn main() -> Result<()> {
             }
         }
     }
+
+    // TODO: send exit command
+    // TODO: handle error result
+    player_thread.join().expect("Error joining thread");
 
     ratatui::restore(); // Returns the terminal back to normal mode
     Ok(())

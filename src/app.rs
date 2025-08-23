@@ -26,6 +26,7 @@ fn login() -> Option<BandCampClient> {
         })
         .unwrap_or_else(|| prompt("username"));
 
+    // TODO: hide password during prompt
     let password = var("BANDCAMP_PASSWORD")
         .map_or(None, |username| {
             if username.is_empty() {

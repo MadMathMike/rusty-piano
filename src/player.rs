@@ -5,6 +5,12 @@ use rodio::{Decoder, OutputStreamBuilder};
 
 use crate::bandcamp::Track;
 
+pub enum PlaybackCommands
+{
+    Exit,
+    Play(Track)
+}
+
 pub fn play_track(track: &Track) {
     let url = &track.hq_audio_url;
     let mut temp_dir = std::env::temp_dir();

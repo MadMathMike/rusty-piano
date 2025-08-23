@@ -245,7 +245,7 @@ pub struct Item {
     pub token: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Track {
     pub track_id: u32,
     pub title: String,
