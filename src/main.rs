@@ -1,6 +1,6 @@
-use std::sync::mpsc;
-use std::thread::{self, sleep};
-use std::time::Duration;
+use std::fs::File;
+use std::io::{Write, copy};
+use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use crossterm::event::{KeyCode, KeyEventKind};
@@ -10,7 +10,9 @@ use ratatui::{
     layout::{Constraint, Direction, Layout},
     widgets::{Block, Borders, List, Paragraph},
 };
-use rusty_piano::player::{play_track, PlaybackCommands};
+use reqwest::StatusCode;
+use rodio::{Decoder, OutputStreamBuilder};
+use rusty_piano::bandcamp::Track;
 use rusty_piano::{bandcamp::Item, collection::read_collection};
 
 fn main() -> Result<()> {
@@ -21,25 +23,11 @@ fn main() -> Result<()> {
 
     let mut app_state = AppState::new(collection);
 
-    let (channel_tx, channel_rx) = mpsc::channel::<PlaybackCommands>();
+    let stream_handle =
+        OutputStreamBuilder::open_default_stream().expect("Error opening default audio stream");
+    let sink = rodio::Sink::connect_new(stream_handle.mixer());
 
-    let player_thread = thread::spawn(move|| {
-        // TODO: Make sure this can respond to events while music is playing
-        // Or at least the exit event. Events that are sent to the channel 
-        // do back up like a queue though (which makes sense).
-        while let Ok(command) = channel_rx.recv()
-        {
-            // TODO: Question, how does polling rate affect usability and CPU resource consumption? Can I poll too fast?
-            sleep(Duration::from_millis(100));
-            match command {
-                PlaybackCommands::Exit => break,
-                // TODO: either the player or this thread will need to handle stopping currently playing songs to switch to the new song
-                PlaybackCommands::Play(track) => play_track(&track),
-            }
-        }
-    });
-
-    // TODO: what happens if we error out before we can send the exit command to the player? 
+    // TODO: what happens if we error out before we can send the exit command to the player?
     // Do we orphan a thread? Or does the process hang?
     while !app_state.exit {
         terminal.draw(|frame| {
@@ -53,22 +41,26 @@ fn main() -> Result<()> {
                 match key_event.code {
                     KeyCode::Enter => {
                         if let Some(selected) = app_state.album_list_state.selected() {
-                            if let Some(track) = app_state.collection.get(selected).map(|item|item.tracks.first().expect("Should not have any empty albums")){
-                                channel_tx.send(PlaybackCommands::Play(track.clone()))?;
+                            if let Some(track) = app_state.collection.get(selected).map(|item| {
+                                item.tracks
+                                    .first()
+                                    .expect("Should not have any empty albums")
+                            }) {
+                                let file = download_track(&track);
+                                let source = Decoder::try_from(file).expect("Error decoding file");
+                                sink.clear();
+                                sink.append(source);
+                                sink.play();
                             }
                         }
-                    },
+                    }
                     KeyCode::Up => {
                         app_state.album_list_state.scroll_up_by(1);
                     }
                     KeyCode::Down => {
                         app_state.album_list_state.scroll_down_by(1);
                     }
-                    KeyCode::Char('q') => {
-                        // TODO: can the OS cleanup abandoned threads?
-                        channel_tx.send(PlaybackCommands::Exit)?;
-                        app_state.exit = true
-                    },
+                    KeyCode::Char('q') => app_state.exit = true,
                     KeyCode::Char(_) => todo!(),
                     KeyCode::Null => todo!(),
                     // KeyCode::Esc => todo!(),
@@ -80,10 +72,6 @@ fn main() -> Result<()> {
             }
         }
     }
-
-    // TODO: send exit command
-    // TODO: handle error result
-    player_thread.join().expect("Error joining thread");
 
     ratatui::restore(); // Returns the terminal back to normal mode
     Ok(())
@@ -151,4 +139,32 @@ fn draw(frame: &mut Frame, app_state: &mut AppState) -> Result<()> {
     frame.render_widget("woah", outer_layout[2]);
 
     Ok(())
+}
+
+fn download_track(track: &Track) -> File {
+    let mut path_buf = PathBuf::new();
+    path_buf.push(std::env::temp_dir());
+    path_buf.push(format!("{}.mp3", track.track_id));
+
+    if let Ok(file) = File::open(&path_buf) {
+        return file;
+    }
+
+    let mut temp_file = File::create(&path_buf).unwrap();
+
+    let mut download_response = reqwest::blocking::Client::new()
+        .get(&track.hq_audio_url)
+        .send()
+        .expect("Error downloading file");
+    // TODO: Return an error when Bandcamp returns a 410
+    assert_eq!(StatusCode::OK, download_response.status());
+
+    // Bandcamp will return a 410, Gone response when the link is no longer valid
+    // I suspect the link is only valid for some amount of time.
+    // Maybe as long as the access token, which is about an hour. Not sure.
+
+    copy(&mut download_response, &mut temp_file).expect("error copying download to file");
+    temp_file.flush().expect("error finishing copy?");
+
+    File::open(path_buf).unwrap()
 }
