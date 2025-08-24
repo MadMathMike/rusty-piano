@@ -5,10 +5,9 @@ use rodio::{Decoder, OutputStreamBuilder};
 
 use crate::bandcamp::Track;
 
-pub enum PlaybackCommands
-{
+pub enum PlaybackCommands {
     Exit,
-    Play(Track)
+    Play(Track),
 }
 
 pub fn play_track(track: &Track) {
@@ -42,13 +41,12 @@ fn play_source_sample(file: File) {
     let stream_handle =
         OutputStreamBuilder::open_default_stream().expect("Error opening default audio stream");
 
-    // TODO: What is this doing?
+    // TODO: Move this sink to the main thread. It plays its sources in a separate thread any way. Playback will stop if the sink is dropped
     let _sink = rodio::Sink::connect_new(stream_handle.mixer());
 
     let source = Decoder::try_from(file).expect("Error decoding file");
     // Play the sound directly on the device
     stream_handle.mixer().add(source);
 
-    // Note that playback stops when the sink is dropped, which is why we sleep for a bit
     sleep(std::time::Duration::from_secs(5));
 }
