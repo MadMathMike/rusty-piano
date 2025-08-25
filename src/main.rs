@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use crossterm::event::{KeyCode, KeyEventKind};
+use log::error;
 use ratatui::prelude::*;
 use ratatui::widgets::ListState;
 use ratatui::{
@@ -12,12 +13,18 @@ use ratatui::{
 };
 use reqwest::StatusCode;
 use rodio::{Decoder, OutputStreamBuilder};
-use rusty_piano::bandcamp::Track;
+use rusty_piano::bandcamp::{BandCampClient, Track};
+use rusty_piano::secrets::{get_access_token, store_access_token};
 use rusty_piano::{bandcamp::Item, collection::read_collection};
 
 fn main() -> Result<()> {
-    // TODO: If there is a problem reading the collection (or the collection is empty), prompt authentication and collection caching
-    let collection = read_collection();
+    // TODO: abstract the library away from the bandcamp collection
+    // TODO: separate downloading/caching from the collection
+
+    let collection = read_collection().unwrap_or_else(|e| {
+        error!("{e:?}");
+        cache_collection()
+    });
 
     let mut terminal = ratatui::init(); // Puts the terminal in raw mode, which disables line buffering (so rip to ctrl+c response)
 
@@ -27,8 +34,6 @@ fn main() -> Result<()> {
         OutputStreamBuilder::open_default_stream().expect("Error opening default audio stream");
     let sink = rodio::Sink::connect_new(stream_handle.mixer());
 
-    // TODO: what happens if we error out before we can send the exit command to the player?
-    // Do we orphan a thread? Or does the process hang?
     while !app_state.exit {
         terminal.draw(|frame| {
             draw(frame, &mut app_state)
@@ -167,4 +172,58 @@ fn download_track(track: &Track) -> File {
     temp_file.flush().expect("error finishing copy?");
 
     File::open(path_buf).unwrap()
+}
+
+fn cache_collection() -> Vec<Item> {
+    let client = authenticate_with_bandcamp();
+
+    let items = client.get_entire_collection(5);
+
+    let unique_count = items
+        .iter()
+        .map(|i| i.tralbum_id)
+        .collect::<std::collections::HashSet<_>>()
+        .len();
+
+    // Maybe this goes in an integration test? Requires authentication, so probably not
+    assert_eq!(
+        unique_count,
+        items.len(),
+        "There should not be any duplicates in the collection"
+    );
+    // assert_eq!(7, unique_count);
+
+    rusty_piano::collection::write_collection(&items);
+
+    items
+}
+
+fn authenticate_with_bandcamp() -> BandCampClient {
+    match get_access_token() {
+        Some(token) => BandCampClient::init_with_token(token.clone()).or_else(login),
+        None => login(),
+    }
+    .expect("Failed initialization. Bad token or credentials. Or something...")
+}
+
+fn login() -> Option<BandCampClient> {
+    println!("Attempting login...");
+
+    let username = prompt("username");
+    // TODO: hide password during prompt
+    let password = prompt("password");
+
+    BandCampClient::init(&username, &password).map(|tuple| {
+        store_access_token(&tuple.1);
+        tuple.0
+    })
+}
+
+fn prompt(param: &str) -> String {
+    println!("Enter your bandcamp {param}:");
+    let mut input = String::new();
+    std::io::stdin()
+        .read_line(&mut input)
+        .expect("Error reading standard in");
+    input.trim_end().to_owned()
 }
