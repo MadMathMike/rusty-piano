@@ -46,15 +46,17 @@ fn main() -> Result<()> {
                 match key_event.code {
                     KeyCode::Enter => {
                         if let Some(selected) = app_state.album_list_state.selected() {
-                            if let Some(track) = app_state.collection.get(selected).map(|item| {
-                                item.tracks
-                                    .first()
-                                    .expect("Should not have any empty albums")
-                            }) {
-                                let file = download_track(&track);
-                                let source = Decoder::try_from(file).expect("Error decoding file");
+                            if let Some(album) = app_state.collection.get(selected) {
                                 sink.clear();
-                                sink.append(source);
+                                // TODO: download in a separate thread and show download status in UI
+                                album.tracks.iter().for_each(|t| {
+                                    // TODO: update download_track to return a Result<...> to prompt for re-chaching the collection
+                                    // Bandcamp URLs eventually return a 410 gone response when the download link is no longer valid
+                                    let file = download_track(t);
+                                    let source =
+                                        Decoder::try_from(file).expect("Error decoding file");
+                                    sink.append(source);
+                                });
                                 sink.play();
                             }
                         }
@@ -66,6 +68,7 @@ fn main() -> Result<()> {
                         app_state.album_list_state.scroll_down_by(1);
                     }
                     KeyCode::Char('q') => app_state.exit = true,
+                    // TODO: space for play/pause?
                     KeyCode::Char(_) => todo!(),
                     KeyCode::Null => todo!(),
                     // KeyCode::Esc => todo!(),
@@ -147,6 +150,7 @@ fn draw(frame: &mut Frame, app_state: &mut AppState) -> Result<()> {
 }
 
 fn download_track(track: &Track) -> File {
+    // TODO: download to more local location with human readable file names
     let mut path_buf = PathBuf::new();
     path_buf.push(std::env::temp_dir());
     path_buf.push(format!("{}.mp3", track.track_id));
