@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::fs::{File, create_dir_all};
 use std::io::{Write, copy};
 use std::path::PathBuf;
 
@@ -52,7 +52,7 @@ fn main() -> Result<()> {
                                 album.tracks.iter().for_each(|t| {
                                     // TODO: update download_track to return a Result<...> to prompt for re-chaching the collection
                                     // Bandcamp URLs eventually return a 410 gone response when the download link is no longer valid
-                                    let file = download_track(t);
+                                    let file = download_track(&album, t);
                                     let source =
                                         Decoder::try_from(file).expect("Error decoding file");
                                     sink.append(source);
@@ -61,6 +61,8 @@ fn main() -> Result<()> {
                             }
                         }
                     }
+                    // TODO: vim keybindings might suggest the 'j' and 'k' keys should be used
+                    // for down and up respectively
                     KeyCode::Up => {
                         app_state.album_list_state.scroll_up_by(1);
                     }
@@ -149,18 +151,25 @@ fn draw(frame: &mut Frame, app_state: &mut AppState) -> Result<()> {
     Ok(())
 }
 
-fn download_track(track: &Track) -> File {
-    // TODO: download to more local location with human readable file names
-    let mut path_buf = PathBuf::new();
-    path_buf.push(std::env::temp_dir());
-    path_buf.push(format!("{}.mp3", track.track_id));
+fn download_track(album: &Item, track: &Track) -> File {
+    // TODO: Path escape and trim all of the injected path parts (from album and track)
+    // The album "tempor / jester" by Breaded Penguin resulted in a jester subdirectory
+    // I suspect other path navigation is not safe
+    let mut path = PathBuf::from(format!(
+        "./bandcamp/{}/{}",
+        album.band_info.name, album.title
+    ));
+    create_dir_all(&path).unwrap();
 
-    if let Ok(file) = File::open(&path_buf) {
+    path.push(format!("{:02} - {}.mp3", track.track_number, track.title));
+
+    if let Ok(file) = File::open(&path) {
         return file;
     }
 
-    let mut temp_file = File::create(&path_buf).unwrap();
+    let mut file = File::create(&path).unwrap();
 
+    // TODO: should I only have one client?
     let mut download_response = reqwest::blocking::Client::new()
         .get(&track.hq_audio_url)
         .send()
@@ -172,10 +181,10 @@ fn download_track(track: &Track) -> File {
     // I suspect the link is only valid for some amount of time.
     // Maybe as long as the access token, which is about an hour. Not sure.
 
-    copy(&mut download_response, &mut temp_file).expect("error copying download to file");
-    temp_file.flush().expect("error finishing copy?");
+    copy(&mut download_response, &mut file).expect("error copying download to file");
+    file.flush().expect("error finishing copy?");
 
-    File::open(path_buf).unwrap()
+    File::open(path).unwrap()
 }
 
 fn cache_collection() -> Vec<Item> {
