@@ -13,14 +13,11 @@ use ratatui::{
 };
 use reqwest::StatusCode;
 use rodio::{Decoder, OutputStreamBuilder};
-use rusty_piano::bandcamp::{BandCampClient, Track};
+use rusty_piano::bandcamp::{BandCampClient, Track, write_collection};
 use rusty_piano::secrets::{get_access_token, store_access_token};
-use rusty_piano::{bandcamp::Item, collection::read_collection};
+use rusty_piano::{bandcamp::Item, bandcamp::read_collection};
 
 fn main() -> Result<()> {
-    // TODO: abstract the library away from the bandcamp collection
-    // TODO: separate downloading/caching from the collection
-
     let collection = read_collection().unwrap_or_else(|e| {
         error!("{e:?}");
         cache_collection()
@@ -48,7 +45,6 @@ fn main() -> Result<()> {
                         if let Some(selected) = app_state.album_list_state.selected() {
                             if let Some(album) = app_state.collection.get(selected) {
                                 sink.clear();
-                                // TODO: download in a separate thread and show download status in UI
                                 album.tracks.iter().for_each(|t| {
                                     // TODO: update download_track to return a Result<...> to prompt for re-chaching the collection
                                     // Bandcamp URLs eventually return a 410 gone response when the download link is no longer valid
@@ -70,14 +66,13 @@ fn main() -> Result<()> {
                         app_state.album_list_state.scroll_down_by(1);
                     }
                     KeyCode::Char('q') => app_state.exit = true,
-                    // TODO: space for play/pause?
-                    KeyCode::Char(_) => todo!(),
-                    KeyCode::Null => todo!(),
-                    // KeyCode::Esc => todo!(),
-                    // KeyCode::Pause => todo!(),
-                    // KeyCode::Media(media_key_code) => todo!(),
-                    // KeyCode::Modifier(modifier_key_code) => todo!(),
-                    _ => {}
+                    // KeyCode::Char(_) => ,
+                    // KeyCode::Null => ,
+                    // KeyCode::Esc => ,
+                    // KeyCode::Pause => ,
+                    // KeyCode::Media(media_key_code) => ,
+                    // KeyCode::Modifier(modifier_key_code) => ,
+                    _ => (),
                 }
             }
         }
@@ -174,7 +169,7 @@ fn download_track(album: &Item, track: &Track) -> File {
         .get(&track.hq_audio_url)
         .send()
         .expect("Error downloading file");
-    // TODO: Return an error when Bandcamp returns a 410
+
     assert_eq!(StatusCode::OK, download_response.status());
 
     // Bandcamp will return a 410, Gone response when the link is no longer valid
@@ -206,7 +201,7 @@ fn cache_collection() -> Vec<Item> {
     );
     // assert_eq!(7, unique_count);
 
-    rusty_piano::collection::write_collection(&items);
+    write_collection(&items);
 
     items
 }

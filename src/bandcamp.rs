@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use crate::crypto;
 
 use reqwest::{
     StatusCode,
@@ -6,12 +6,16 @@ use reqwest::{
     header::{HeaderMap, HeaderValue, USER_AGENT},
 };
 use serde::{Deserialize, Serialize};
-
-use crate::crypto;
+use std::collections::HashMap;
+use std::io::Write;
+use std::{
+    fs::File,
+    io::{BufRead, BufReader},
+};
 
 pub struct BandCampClient {
     client: Client,
-    token: Option<String>,
+    access_token: Option<String>,
 }
 
 #[allow(clippy::new_without_default)]
@@ -32,7 +36,7 @@ impl BandCampClient {
 
         Self {
             client,
-            token: None,
+            access_token: None,
         }
     }
 
@@ -40,7 +44,7 @@ impl BandCampClient {
         let mut bandcamp_client = BandCampClient::new();
         let login_response = bandcamp_client.login(username, password);
 
-        bandcamp_client.token = Some(login_response.access_token.clone());
+        bandcamp_client.access_token = Some(login_response.access_token.clone());
         Some((bandcamp_client, login_response.access_token))
     }
 
@@ -59,14 +63,13 @@ impl BandCampClient {
         println!("{}", &response_body);
 
         if StatusCode::is_success(&status_code) {
-            bandcamp_client.token = Some(token);
+            bandcamp_client.access_token = Some(token);
             Some(bandcamp_client)
         } else {
             None
         }
     }
 
-    // TODO: If the re-auth flow using the refresh_token is ever figured out, add the refresh_token as a parameter (maybe)
     // https://github.com/Metalnem/bandcamp-downloader
     // https://mijailovic.net/2024/04/04/bandcamp-auth/
     fn login(&self, username: &str, password: &str) -> LoginResponse {
@@ -79,10 +82,6 @@ impl BandCampClient {
             "client_secret",
             "1myK12VeCL3dWl9o/ncV2VyUUbOJuNPVJK6bZZJxHvk=",
         );
-
-        // TODO: Instead of building a request, getting the body, then calculating the x-bandcamp-dm header
-        // Manually construct the string body so the x-bandcamp-dm header can be calculated before creating
-        // the request object.
 
         let mut login_request = self
             .client
@@ -158,23 +157,15 @@ impl BandCampClient {
 
         assert_eq!(login_response.status(), StatusCode::OK);
 
-        let response_body = login_response.text().unwrap();
-
-        // TODO: figure out debug logging or something? Maybe it can be configured on the reqwest client?
-        println!("{}", &response_body);
-
-        // TODO: if parsing fails, it could be because we received a response like this:
+        // If parsing fails, it could be because we received a response like this:
         // {"error":"emailVerificationRequired","error_description":"Please first re-verify your account using the link we just emailed to you."}
         // {"error":"nameNoMatch","error_description":"Unknown username or email"}
-        // TODO: check if login_response.ok is true?
-        // login_response
-        //     .json::<LoginResponse>()
-        //     .expect("Failed to parse login response")
-        serde_json::from_str::<LoginResponse>(&response_body)
+        login_response
+            .json::<LoginResponse>()
             .expect("Failed to parse login response")
     }
 
-    // TODO: would be fun to turn this into an iter
+    // TODO: would be fun to turn this into an iter, maybe an async iter
     pub fn get_entire_collection(&self, page_size: usize) -> Vec<Item> {
         let mut offset = String::new();
         let mut items: Vec<Item> = Vec::new();
@@ -207,7 +198,7 @@ impl BandCampClient {
             .client
             .get("https://bandcamp.com/api/collectionsync/1/collection")
             .query(&query)
-            .bearer_auth(self.token.clone().expect("Uninitialized client"))
+            .bearer_auth(self.access_token.clone().expect("Uninitialized client"))
             .send()
             .expect("Error calling collection api");
 
@@ -217,6 +208,27 @@ impl BandCampClient {
 
         serde_json::from_str::<CollectionResponse>(&response_body)
             .expect("Failure parsing collection response")
+    }
+}
+
+pub fn read_collection() -> anyhow::Result<Vec<Item>> {
+    let file = File::open("collection.jsonl")?;
+    let collection: Vec<Item> = BufReader::new(file)
+        .lines()
+        .map_while(Result::ok)
+        .map(|line| serde_json::from_str::<Item>(&line).unwrap())
+        .collect();
+
+    Ok(collection)
+}
+
+pub fn write_collection(items: &[Item]) {
+    let mut file = File::create("collection.jsonl").expect("Error creating file handle");
+    for line in items.iter().map(|i| serde_json::to_string(i).unwrap()) {
+        file.write_all(line.as_bytes())
+            .expect("Error writing to file");
+        file.write_all("\n".as_bytes())
+            .expect("Error writing to file");
     }
 }
 

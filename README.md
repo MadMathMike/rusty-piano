@@ -4,19 +4,22 @@ Goal: build a terminal app using Rust that can play collected albums from your ~
 # Goals
 - [x] Play local mp3 on default media output device
 - [x] Authenticate with ~~Pandora~~ Bandcamp API
-- [x] Find a way to store/re-use auth-token to prevent getting flagged as a bot?
+- [x] Find a way to store/re-use auth-token
 - [x] Request album list
 - [x] Play single song from album
-- [ ] Pull down (and cache?) entire collection (must use paging)
-- [ ] Play songs from album consecutively
+- [x] Pull down (and cache?) entire collection (must use paging)
+- [x] Play songs from album consecutively
 - [ ] UI: View songs in album
-- [ ] UI: View albums
-- [ ] UI: Playback controls 
-- [ ] UI: Song progress
-- [ ] UI: Navigation while album playing
+- [ ] UI: Download state
+  - [ ] Show when album is downloaded
+  - [ ] Show when album is downloading
+- [x] UI: View albums
+- [ ] UI: Playback controls
+  - [ ] Play/pause (space bar?)
+  - [ ] Track navigation
+- [ ] UI: Show currently playing song
+- [x] UI: Navigation while album playing
 - [ ] Stretch: Dynamically parse BandCamp responses to error model vs happy-path model
-- [ ] Stretch: Offline mode
-- [ ] Stretch: Local playlists
 - [ ] Stretch: Downloading progress bar (for slow connections)
 - [ ] Stretch: Debug logging for trouble shooting?
 - [ ] Stretch: Album/Song searching and collecting
@@ -38,7 +41,7 @@ Switched to [rodio](https://crates.io/crates/rodio).
  - Similar dependencies: https://github.com/RustAudio/rodio?tab=readme-ov-file#dependencies-linux-only
 
 ### Keyring
-Crate: 
+Crate:
  - Seems to require dbus-devel
 
 ### Bandcamp
