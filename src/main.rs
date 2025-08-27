@@ -26,7 +26,9 @@ fn main() -> Result<()> {
     // Puts the terminal in raw mode, which disables line buffering (so rip to ctrl+c response)
     let mut terminal = ratatui::init();
 
-    let mut app_state = AppState::new(collection);
+    let collection_as_vms: Vec<ItemVM> = collection.into_iter().map(from_bandcamp_item).collect();
+
+    let mut app_state = AppState::new(collection_as_vms);
 
     let stream_handle =
         OutputStreamBuilder::open_default_stream().expect("Error opening default audio stream");
@@ -46,8 +48,8 @@ fn main() -> Result<()> {
                         if let Some(selected) = app_state.album_list_state.selected() {
                             if let Some(album) = app_state.collection.get(selected) {
                                 sink.clear();
-                                album.tracks.iter().for_each(|track| {
-                                    let path = to_file_path(album, track);
+                                album.item.tracks.iter().for_each(|track| {
+                                    let path = to_file_path(&album.item, track);
 
                                     let file = match File::open(&path) {
                                         Ok(file) => file,
@@ -91,15 +93,33 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-#[derive(Debug)]
 pub struct AppState {
     pub exit: bool,
-    collection: Vec<Item>,
+    collection: Vec<ItemVM>,
     pub album_list_state: ListState,
 }
 
+pub struct ItemVM {
+    item: Item,
+    pub is_downloaded: bool,
+}
+
+fn from_bandcamp_item(item: Item) -> ItemVM {
+    // figure out if everything is downloaded
+    let is_downloaded = item
+        .tracks
+        .iter()
+        .map(|t| to_file_path(&item, t))
+        .all(|f| f.exists());
+
+    ItemVM {
+        item,
+        is_downloaded,
+    }
+}
+
 impl AppState {
-    fn new(collection: Vec<Item>) -> Self {
+    fn new(collection: Vec<ItemVM>) -> Self {
         let mut album_list_state = ListState::default();
         album_list_state.select(Some(0));
 
@@ -133,12 +153,15 @@ fn draw(frame: &mut Frame, app_state: &mut AppState) -> Result<()> {
     let album_titles = app_state
         .collection
         .iter()
-        .map(|i| i.title.clone())
+        .map(|i| {
+            let icon = if i.is_downloaded { '✓' } else { '⭳' };
+            format!("{} {icon}", i.item.title.clone())
+        })
         .collect::<Vec<String>>();
-
+    // ⭳
     let list = List::new(album_titles)
         .block(Block::bordered().title("Albums"))
-        .highlight_style(Style::new().italic());
+        .highlight_symbol(">");
 
     // frame.render_widget(
     //     list, //Paragraph::new("Left").block(Block::new().borders(Borders::ALL)),
@@ -166,6 +189,7 @@ fn download_track(path: &PathBuf, download_url: &str) {
 
     assert_eq!(StatusCode::OK, download_response.status());
 
+    create_dir_all(path.parent().unwrap()).unwrap();
     let mut file = File::create(&path).unwrap();
 
     copy(&mut download_response, &mut file).expect("error copying download to file");
@@ -178,7 +202,6 @@ fn to_file_path(album: &Item, track: &Track) -> PathBuf {
     let mut album_title = album.title.clone();
     album_title.retain(filename_safe_char);
     let mut path = PathBuf::from(format!("./bandcamp/{band_name}/{album_title}"));
-    create_dir_all(&path).unwrap();
 
     let mut track_title = track.title.clone();
     track_title.retain(filename_safe_char);
