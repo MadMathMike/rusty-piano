@@ -23,7 +23,8 @@ fn main() -> Result<()> {
         cache_collection()
     });
 
-    let mut terminal = ratatui::init(); // Puts the terminal in raw mode, which disables line buffering (so rip to ctrl+c response)
+    // Puts the terminal in raw mode, which disables line buffering (so rip to ctrl+c response)
+    let mut terminal = ratatui::init();
 
     let mut app_state = AppState::new(collection);
 
@@ -45,11 +46,17 @@ fn main() -> Result<()> {
                         if let Some(selected) = app_state.album_list_state.selected() {
                             if let Some(album) = app_state.collection.get(selected) {
                                 sink.clear();
-                                album.tracks.iter().for_each(|t| {
-                                    // TODO: update download_track to return a Result<...> to prompt for re-chaching the collection
-                                    // Bandcamp URLs eventually return a 410 gone response when the download link is no longer valid
-                                    let path = download_track(&album, t);
-                                    let file = File::open(path).unwrap();
+                                album.tracks.iter().for_each(|track| {
+                                    let path = to_file_path(album, track);
+
+                                    let file = match File::open(&path) {
+                                        Ok(file) => file,
+                                        Err(_) => {
+                                            download_track(&path, &track.hq_audio_url);
+                                            File::open(&path).unwrap()
+                                        }
+                                    };
+
                                     let source =
                                         Decoder::try_from(file).expect("Error decoding file");
                                     sink.append(source);
@@ -79,7 +86,8 @@ fn main() -> Result<()> {
         }
     }
 
-    ratatui::restore(); // Returns the terminal back to normal mode
+    // Returns the terminal back to normal mode
+    ratatui::restore();
     Ok(())
 }
 
@@ -147,7 +155,24 @@ fn draw(frame: &mut Frame, app_state: &mut AppState) -> Result<()> {
     Ok(())
 }
 
-fn download_track(album: &Item, track: &Track) -> PathBuf {
+// TODO: update download_track to return a Result<...> to prompt for re-chaching the collection
+// Bandcamp URLs eventually return a 410 gone response when the download link is no longer valid
+fn download_track(path: &PathBuf, download_url: &str) {
+    // TODO: should I only have one client?
+    let mut download_response = reqwest::blocking::Client::new()
+        .get(download_url)
+        .send()
+        .expect("Error downloading file");
+
+    assert_eq!(StatusCode::OK, download_response.status());
+
+    let mut file = File::create(&path).unwrap();
+
+    copy(&mut download_response, &mut file).expect("error copying download to file");
+    file.flush().expect("error finishing copy?");
+}
+
+fn to_file_path(album: &Item, track: &Track) -> PathBuf {
     let mut band_name = album.band_info.name.clone();
     band_name.retain(filename_safe_char);
     let mut album_title = album.title.clone();
@@ -158,29 +183,6 @@ fn download_track(album: &Item, track: &Track) -> PathBuf {
     let mut track_title = track.title.clone();
     track_title.retain(filename_safe_char);
     path.push(format!("{:02} - {track_title}.mp3", track.track_number));
-
-    if File::open(&path).is_ok() {
-        // Technically, the file may not have been completely written to, so the path might be bad,
-        // but we'll trust that if it exists, it was written to succesfully
-        return path;
-    }
-
-    // TODO: should I only have one client?
-    let mut download_response = reqwest::blocking::Client::new()
-        .get(&track.hq_audio_url)
-        .send()
-        .expect("Error downloading file");
-
-    // Bandcamp will return a 410, Gone response when the link is no longer valid
-    // I suspect the link is only valid for some amount of time.
-    // Maybe as long as the access token, which is about an hour. Not sure.
-    assert_eq!(StatusCode::OK, download_response.status());
-
-    let mut file = File::create(&path).unwrap();
-
-    copy(&mut download_response, &mut file).expect("error copying download to file");
-    file.flush().expect("error finishing copy?");
-
     path
 }
 
