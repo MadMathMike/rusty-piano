@@ -7,17 +7,18 @@ use std::thread;
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use log::error;
-use ratatui::widgets::ListState;
-use ratatui::{DefaultTerminal, prelude::*};
 use ratatui::{
     layout::{Constraint, Direction, Layout},
+    prelude::*,
+    widgets::ListState,
     widgets::{Block, Borders, List, Paragraph},
 };
 use reqwest::StatusCode;
 use rodio::{Decoder, OutputStream, OutputStreamBuilder, Sink};
-use rusty_piano::bandcamp::{BandCampClient, write_collection};
-use rusty_piano::secrets::{get_access_token, store_access_token};
-use rusty_piano::{bandcamp::Item, bandcamp::read_collection};
+use rusty_piano::{
+    bandcamp::{BandCampClient, Item, read_collection, write_collection},
+    secrets::{get_access_token, store_access_token},
+};
 
 fn main() -> Result<()> {
     let collection = read_collection().unwrap_or_else(|e| {
@@ -26,22 +27,40 @@ fn main() -> Result<()> {
     });
 
     // Puts the terminal in raw mode, which disables line buffering (so rip to ctrl+c response)
-    let terminal = ratatui::init();
+    let mut terminal = ratatui::init();
 
     let collection_as_vms: Vec<Album> = collection.into_iter().map(from_bandcamp_item).collect();
 
     // Sound gets killed when this is dropped, so it has to live as long as the whole app.
-    // Creating it here instead of storing it with the App struct just seemed better to
-    // reduce the state owned by the App struct.
     let stream_handle =
         OutputStreamBuilder::open_default_stream().expect("Error opening default audio stream");
-    let app = App::new(collection_as_vms, &stream_handle);
+    let mut app = App::new(collection_as_vms, &stream_handle);
 
-    let result = app.run(terminal);
+    let ui_thread_mpsc_tx = app.channel.0.clone();
+
+    // TODO: error handling. If this input thread panics, how do I notify the main thread and exit the application?
+    thread::spawn(move || {
+        loop {
+            if let crossterm::event::Event::Key(key_event) = crossterm::event::read().unwrap() {
+                ui_thread_mpsc_tx.send(Event::Input(key_event)).unwrap();
+            }
+        }
+    });
+
+    while !app.exit {
+        terminal.draw(|frame| frame.render_widget(&mut app, frame.area()))?;
+
+        match app.channel.1.recv()? {
+            Event::Input(key_event) => app.handle_key(key_event),
+
+            Event::AlbumDownloadedEvent { title } => app.handle_album_downloaded(&title),
+        }
+    }
 
     // Returns the terminal back to normal mode
     ratatui::restore();
-    result
+
+    Ok(())
 }
 
 pub struct App {
@@ -87,34 +106,6 @@ impl App {
             sink,
             channel,
         }
-    }
-
-    // TODO: I think the body of this run method can simply be moved to the main function
-    pub fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
-        let ui_thread_mpsc_tx = self.channel.0.clone();
-
-        // TODO: error handling. If this input thread panics, how do I notify the main thread and exit the application?
-        // Also, do I need a mechanism to safely stop this thread so I can join it later? I think the host OS will clean up
-        // orphaned threads when the application closes... 🤔
-        thread::spawn(move || {
-            loop {
-                if let crossterm::event::Event::Key(key_event) = crossterm::event::read().unwrap() {
-                    ui_thread_mpsc_tx.send(Event::Input(key_event)).unwrap();
-                }
-            }
-        });
-
-        while !self.exit {
-            terminal.draw(|frame| frame.render_widget(&mut self, frame.area()))?;
-
-            match self.channel.1.recv()? {
-                Event::Input(key_event) => self.handle_key(key_event),
-
-                Event::AlbumDownloadedEvent { title } => self.handle_album_downloaded(&title),
-            }
-        }
-
-        Ok(())
     }
 
     fn handle_key(&mut self, key: KeyEvent) {
@@ -289,6 +280,12 @@ fn download_track(path: &PathBuf, download_url: &str) {
 
 // TODO: change return type to Path instead of PathBuf
 fn to_file_path(album: &Item, track: &rusty_piano::bandcamp::Track) -> PathBuf {
+    // This is incomplete, but works for now as it address the one album in my library with a problem:
+    // The album "tempor / jester" by A Unicorn Masquerade resulted in a jester subdirectory
+    fn filename_safe_char(char: char) -> bool {
+        char != '/'
+    }
+
     let mut band_name = album.band_info.name.clone();
     band_name.retain(filename_safe_char);
     let mut album_title = album.title.clone();
@@ -303,7 +300,11 @@ fn to_file_path(album: &Item, track: &rusty_piano::bandcamp::Track) -> PathBuf {
 }
 
 fn cache_collection() -> Vec<Item> {
-    let client = authenticate_with_bandcamp();
+    let client = match get_access_token() {
+        Some(token) => BandCampClient::init_with_token(token.clone()).or_else(login),
+        None => login(),
+    }
+    .expect("Failed initialization. Bad token or credentials. Or something...");
 
     let items = client.get_entire_collection(5);
 
@@ -326,15 +327,16 @@ fn cache_collection() -> Vec<Item> {
     items
 }
 
-fn authenticate_with_bandcamp() -> BandCampClient {
-    match get_access_token() {
-        Some(token) => BandCampClient::init_with_token(token.clone()).or_else(login),
-        None => login(),
-    }
-    .expect("Failed initialization. Bad token or credentials. Or something...")
-}
-
 fn login() -> Option<BandCampClient> {
+    fn prompt(param: &str) -> String {
+        println!("Enter your bandcamp {param}:");
+        let mut input = String::new();
+        std::io::stdin()
+            .read_line(&mut input)
+            .expect("Error reading standard in");
+        input.trim_end().to_owned()
+    }
+
     println!("Attempting login...");
 
     let username = prompt("username");
@@ -345,19 +347,4 @@ fn login() -> Option<BandCampClient> {
         store_access_token(&tuple.1);
         tuple.0
     })
-}
-
-fn prompt(param: &str) -> String {
-    println!("Enter your bandcamp {param}:");
-    let mut input = String::new();
-    std::io::stdin()
-        .read_line(&mut input)
-        .expect("Error reading standard in");
-    input.trim_end().to_owned()
-}
-
-// This is incomplete, but works for now as it address the one album in my library with a problem:
-// The album "tempor / jester" by A Unicorn Masquerade resulted in a jester subdirectory
-fn filename_safe_char(char: char) -> bool {
-    char != '/'
 }

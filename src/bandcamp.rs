@@ -211,6 +211,7 @@ impl BandCampClient {
     }
 }
 
+// TODO: read/write collection should be moved to a json_l module
 pub fn read_collection() -> anyhow::Result<Vec<Item>> {
     let file = File::open("collection.jsonl")?;
     let collection: Vec<Item> = BufReader::new(file)
