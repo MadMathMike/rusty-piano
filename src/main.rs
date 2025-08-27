@@ -2,7 +2,7 @@ use std::fs::{File, create_dir_all};
 use std::io::{Write, copy};
 use std::path::PathBuf;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use log::error;
 use ratatui::widgets::ListState;
@@ -49,18 +49,27 @@ pub struct ItemVM {
 }
 
 impl App {
+    fn new(collection: Vec<ItemVM>) -> Self {
+        let mut album_list_state = ListState::default();
+        album_list_state.select(Some(0));
+
+        App {
+            exit: false,
+            collection,
+            album_list_state,
+        }
+    }
+
     pub fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
         let stream_handle =
             OutputStreamBuilder::open_default_stream().expect("Error opening default audio stream");
         let sink = rodio::Sink::connect_new(stream_handle.mixer());
 
         while !self.exit {
-            terminal.draw(|frame| {
-                draw(frame, &mut self)
-                    .context("Failure drawing frame")
-                    .unwrap()
-            })?;
+            terminal.draw(|frame| frame.render_widget(&mut self, frame.area()))?;
 
+            // TODO: change event read to not be blocking so we can get UI updates without waiting for a key press
+            // e.g., we want to update the "is_downloaded" field and register that without waiting for a UI re-render
             if let crossterm::event::Event::Key(key_event) = crossterm::event::read()? {
                 self.handle_key(key_event, &sink);
             }
@@ -130,64 +139,51 @@ fn from_bandcamp_item(item: Item) -> ItemVM {
     }
 }
 
-impl App {
-    fn new(collection: Vec<ItemVM>) -> Self {
-        let mut album_list_state = ListState::default();
-        album_list_state.select(Some(0));
+impl Widget for &mut App {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        let [header, body, footer] = Layout::default()
+            .direction(Direction::Vertical)
+            .margin(1)
+            .constraints(vec![
+                Constraint::Length(1),
+                Constraint::Fill(1),
+                Constraint::Length(3),
+            ])
+            .areas(area);
 
-        App {
-            exit: false,
-            collection,
-            album_list_state,
-        }
+        Line::from("hello world").render(header, buf);
+
+        let [left, right] = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(vec![Constraint::Percentage(40), Constraint::Percentage(60)])
+            .areas(body);
+
+        // Iterate through all elements in the `items` and stylize them.
+        let album_titles = self
+            .collection
+            .iter()
+            .map(|i| {
+                let icon = if i.is_downloaded { '✓' } else { '⭳' };
+                format!("{} {icon}", i.item.title.clone())
+            })
+            .collect::<Vec<String>>();
+
+        let list = List::new(album_titles)
+            .block(Block::bordered().title("Albums"))
+            .highlight_symbol(">");
+
+        // frame.render_widget(
+        //     list, //Paragraph::new("Left").block(Block::new().borders(Borders::ALL)),
+        //     body[0],
+        // );
+        StatefulWidget::render(list, left, buf, &mut self.album_list_state);
+
+        Paragraph::new("Right")
+            .block(Block::new().borders(Borders::ALL))
+            .render(right, buf);
+
+        Line::from("woah").render(footer, buf);
     }
-}
-
-fn draw(frame: &mut Frame, app_state: &mut App) -> Result<()> {
-    let outer_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .margin(1)
-        .constraints(vec![
-            Constraint::Length(1),
-            Constraint::Fill(1),
-            Constraint::Length(3),
-        ])
-        .split(frame.area());
-
-    let body = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints(vec![Constraint::Percentage(40), Constraint::Percentage(60)])
-        .split(outer_layout[1]);
-
-    frame.render_widget("hello world", outer_layout[0]);
-
-    // Iterate through all elements in the `items` and stylize them.
-    let album_titles = app_state
-        .collection
-        .iter()
-        .map(|i| {
-            let icon = if i.is_downloaded { '✓' } else { '⭳' };
-            format!("{} {icon}", i.item.title.clone())
-        })
-        .collect::<Vec<String>>();
-    // ⭳
-    let list = List::new(album_titles)
-        .block(Block::bordered().title("Albums"))
-        .highlight_symbol(">");
-
-    // frame.render_widget(
-    //     list, //Paragraph::new("Left").block(Block::new().borders(Borders::ALL)),
-    //     body[0],
-    // );
-    frame.render_stateful_widget(list, body[0], &mut app_state.album_list_state);
-
-    frame.render_widget(
-        Paragraph::new("Right").block(Block::new().borders(Borders::ALL)),
-        body[1],
-    );
-    frame.render_widget("woah", outer_layout[2]);
-
-    Ok(())
 }
 
 // TODO: update download_track to return a Result<...> to prompt for re-chaching the collection
