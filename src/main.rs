@@ -14,7 +14,7 @@ use ratatui::{
     widgets::{Block, Borders, List, Paragraph},
 };
 use reqwest::StatusCode;
-use rodio::{Decoder, OutputStreamBuilder};
+use rodio::{Decoder, OutputStream, OutputStreamBuilder, Sink};
 use rusty_piano::bandcamp::{BandCampClient, write_collection};
 use rusty_piano::secrets::{get_access_token, store_access_token};
 use rusty_piano::{bandcamp::Item, bandcamp::read_collection};
@@ -30,7 +30,12 @@ fn main() -> Result<()> {
 
     let collection_as_vms: Vec<Album> = collection.into_iter().map(from_bandcamp_item).collect();
 
-    let app = App::new(collection_as_vms);
+    // Sound gets killed when this is dropped, so it has to live as long as the whole app.
+    // Creating it here instead of storing it with the App struct just seemed better to
+    // reduce the state owned by the App struct.
+    let stream_handle =
+        OutputStreamBuilder::open_default_stream().expect("Error opening default audio stream");
+    let app = App::new(collection_as_vms, &stream_handle);
 
     let result = app.run(terminal);
 
@@ -43,16 +48,21 @@ pub struct App {
     exit: bool,
     collection: Vec<Album>,
     album_list_state: ListState,
+    sink: Sink,
+    channel: (mpsc::Sender<Event>, mpsc::Receiver<Event>),
 }
 
 pub struct Album {
     title: String,
     tracks: Vec<Track>,
+    // TODO: switch this to enum for NotDownloaded, Downloading, Downloaded, DownloadFailed
     is_downloaded: bool,
 }
 
+#[derive(Clone)]
 pub struct Track {
     download_url: String,
+    // TODO: I think I can/should use a Path instead of a PathBuf
     file_path: PathBuf,
 }
 
@@ -63,24 +73,25 @@ enum Event {
 }
 
 impl App {
-    fn new(collection: Vec<Album>) -> Self {
+    fn new(collection: Vec<Album>, audio_output_stream: &OutputStream) -> Self {
         let mut album_list_state = ListState::default();
         album_list_state.select(Some(0));
+
+        let sink = rodio::Sink::connect_new(audio_output_stream.mixer());
+        let channel = mpsc::channel();
 
         App {
             exit: false,
             collection,
             album_list_state,
+            sink,
+            channel,
         }
     }
 
+    // TODO: I think the body of this run method can simply be moved to the main function
     pub fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
-        let stream_handle =
-            OutputStreamBuilder::open_default_stream().expect("Error opening default audio stream");
-        let sink = rodio::Sink::connect_new(stream_handle.mixer());
-
-        let (mpsc_tx, mpsc_rx) = mpsc::channel();
-        let ui_thread_mpsc_tx = mpsc_tx.clone();
+        let ui_thread_mpsc_tx = self.channel.0.clone();
 
         // TODO: error handling. If this input thread panics, how do I notify the main thread and exit the application?
         // Also, do I need a mechanism to safely stop this thread so I can join it later? I think the host OS will clean up
@@ -96,16 +107,17 @@ impl App {
         while !self.exit {
             terminal.draw(|frame| frame.render_widget(&mut self, frame.area()))?;
 
-            match mpsc_rx.recv()? {
-                Event::Input(key_event) => self.handle_key(key_event, &sink),
-                Event::AlbumDownloadedEvent { title } => todo!(),
+            match self.channel.1.recv()? {
+                Event::Input(key_event) => self.handle_key(key_event),
+
+                Event::AlbumDownloadedEvent { title } => self.handle_album_downloaded(&title),
             }
         }
 
         Ok(())
     }
 
-    fn handle_key(&mut self, key: KeyEvent, sink: &rodio::Sink) {
+    fn handle_key(&mut self, key: KeyEvent) {
         if key.kind != KeyEventKind::Press {
             return;
         }
@@ -113,22 +125,38 @@ impl App {
             KeyCode::Enter => {
                 if let Some(selected) = self.album_list_state.selected() {
                     if let Some(album) = self.collection.get(selected) {
-                        sink.clear();
-                        album.tracks.iter().for_each(|track| {
-                            let path = &track.file_path;
+                        // TODO: if album is downloading (or download failed), do not kick off new thread to download it!
+                        // TODO: if album is downloaded, clear sink and add songs to the sink
 
-                            let file = match File::open(path) {
-                                Ok(file) => file,
-                                Err(_) => {
-                                    download_track(path, &track.download_url);
-                                    File::open(path).unwrap()
-                                }
-                            };
+                        // self.sink.clear();
 
-                            let source = Decoder::try_from(file).expect("Error decoding file");
-                            sink.append(source);
+                        let tracks = album.tracks.to_owned(); // This works thanks to deriving Clone on the Track struct
+                        let download_thread_mpsc_tx = self.channel.0.clone();
+                        let album_title = album.title.clone();
+                        thread::spawn(move || {
+                            tracks.iter().for_each(|track| {
+                                download_track(&track.file_path, &track.download_url)
+                            });
+
+                            download_thread_mpsc_tx
+                                .send(Event::AlbumDownloadedEvent { title: album_title })
                         });
-                        sink.play();
+
+                        // album.tracks.iter().for_each(|track| {
+                        //     let path = &track.file_path;
+
+                        //     let file = match File::open(path) {
+                        //         Ok(file) => file,
+                        //         Err(_) => {
+                        //             download_track(path, &track.download_url);
+                        //             File::open(path).unwrap()
+                        //         }
+                        //     };
+
+                        //     let source = Decoder::try_from(file).expect("Error decoding file");
+                        //     self.sink.append(source);
+                        // });
+                        // self.sink.play();
                     }
                 }
             }
@@ -151,6 +179,25 @@ impl App {
             // KeyCode::Media(media_key_code) => ,
             // KeyCode::Modifier(modifier_key_code) => ,
             _ => (),
+        }
+    }
+
+    fn handle_album_downloaded(&mut self, album_title: &str) {
+        if let Some(album) = self
+            .collection
+            .iter_mut()
+            .find(|album| album.title.eq(album_title))
+        {
+            album.is_downloaded = true;
+
+            if self.sink.empty() {
+                album.tracks.iter().for_each(|track| {
+                    let file = File::open(&track.file_path)
+                        .expect("Song should have been downloaded already 😬");
+                    let source = Decoder::try_from(file).expect("Error decoding file");
+                    self.sink.append(source);
+                });
+            }
         }
     }
 }
@@ -240,11 +287,13 @@ fn download_track(path: &PathBuf, download_url: &str) {
     file.flush().expect("error finishing copy?");
 }
 
+// TODO: change return type to Path instead of PathBuf
 fn to_file_path(album: &Item, track: &rusty_piano::bandcamp::Track) -> PathBuf {
     let mut band_name = album.band_info.name.clone();
     band_name.retain(filename_safe_char);
     let mut album_title = album.title.clone();
     album_title.retain(filename_safe_char);
+    // TODO: download path should definitely be partially built by some safe absolute path, (and hopefully) configurable
     let mut path = PathBuf::from(format!("./bandcamp/{band_name}/{album_title}"));
 
     let mut track_title = track.title.clone();

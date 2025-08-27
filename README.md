@@ -17,6 +17,7 @@ Goal: build a terminal app using Rust that can play collected albums from your ~
 - [ ] UI: Playback controls
   - [ ] Play/pause (space bar?)
   - [ ] Track navigation
+- [ ] UI: Show currently playing album
 - [ ] UI: Show currently playing song
 - [x] UI: Navigation while album playing
 - [ ] Stretch: Dynamically parse BandCamp responses to error model vs happy-path model
