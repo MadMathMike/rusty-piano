@@ -3,10 +3,10 @@ use std::io::{Write, copy};
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use crossterm::event::{KeyCode, KeyEventKind};
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use log::error;
-use ratatui::prelude::*;
 use ratatui::widgets::ListState;
+use ratatui::{DefaultTerminal, prelude::*};
 use ratatui::{
     layout::{Constraint, Direction, Layout},
     widgets::{Block, Borders, List, Paragraph},
@@ -24,76 +24,20 @@ fn main() -> Result<()> {
     });
 
     // Puts the terminal in raw mode, which disables line buffering (so rip to ctrl+c response)
-    let mut terminal = ratatui::init();
+    let terminal = ratatui::init();
 
     let collection_as_vms: Vec<ItemVM> = collection.into_iter().map(from_bandcamp_item).collect();
 
-    let mut app_state = AppState::new(collection_as_vms);
+    let app = App::new(collection_as_vms);
 
-    let stream_handle =
-        OutputStreamBuilder::open_default_stream().expect("Error opening default audio stream");
-    let sink = rodio::Sink::connect_new(stream_handle.mixer());
-
-    while !app_state.exit {
-        terminal.draw(|frame| {
-            draw(frame, &mut app_state)
-                .context("Failure drawing frame")
-                .unwrap()
-        })?;
-
-        if let crossterm::event::Event::Key(key_event) = crossterm::event::read()? {
-            if key_event.kind == KeyEventKind::Press {
-                match key_event.code {
-                    KeyCode::Enter => {
-                        if let Some(selected) = app_state.album_list_state.selected() {
-                            if let Some(album) = app_state.collection.get(selected) {
-                                sink.clear();
-                                album.item.tracks.iter().for_each(|track| {
-                                    let path = to_file_path(&album.item, track);
-
-                                    let file = match File::open(&path) {
-                                        Ok(file) => file,
-                                        Err(_) => {
-                                            download_track(&path, &track.hq_audio_url);
-                                            File::open(&path).unwrap()
-                                        }
-                                    };
-
-                                    let source =
-                                        Decoder::try_from(file).expect("Error decoding file");
-                                    sink.append(source);
-                                });
-                                sink.play();
-                            }
-                        }
-                    }
-                    // TODO: vim keybindings might suggest the 'j' and 'k' keys should be used
-                    // for down and up respectively
-                    KeyCode::Up => {
-                        app_state.album_list_state.scroll_up_by(1);
-                    }
-                    KeyCode::Down => {
-                        app_state.album_list_state.scroll_down_by(1);
-                    }
-                    KeyCode::Char('q') => app_state.exit = true,
-                    // KeyCode::Char(_) => ,
-                    // KeyCode::Null => ,
-                    // KeyCode::Esc => ,
-                    // KeyCode::Pause => ,
-                    // KeyCode::Media(media_key_code) => ,
-                    // KeyCode::Modifier(modifier_key_code) => ,
-                    _ => (),
-                }
-            }
-        }
-    }
+    let result = app.run(terminal);
 
     // Returns the terminal back to normal mode
     ratatui::restore();
-    Ok(())
+    result
 }
 
-pub struct AppState {
+pub struct App {
     pub exit: bool,
     collection: Vec<ItemVM>,
     pub album_list_state: ListState,
@@ -102,6 +46,74 @@ pub struct AppState {
 pub struct ItemVM {
     item: Item,
     pub is_downloaded: bool,
+}
+
+impl App {
+    pub fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
+        let stream_handle =
+            OutputStreamBuilder::open_default_stream().expect("Error opening default audio stream");
+        let sink = rodio::Sink::connect_new(stream_handle.mixer());
+
+        while !self.exit {
+            terminal.draw(|frame| {
+                draw(frame, &mut self)
+                    .context("Failure drawing frame")
+                    .unwrap()
+            })?;
+
+            if let crossterm::event::Event::Key(key_event) = crossterm::event::read()? {
+                self.handle_key(key_event, &sink);
+            }
+        }
+
+        Ok(())
+    }
+
+    fn handle_key(&mut self, key: KeyEvent, sink: &rodio::Sink) {
+        if key.kind != KeyEventKind::Press {
+            return;
+        }
+        match key.code {
+            KeyCode::Enter => {
+                if let Some(selected) = self.album_list_state.selected() {
+                    if let Some(album) = self.collection.get(selected) {
+                        sink.clear();
+                        album.item.tracks.iter().for_each(|track| {
+                            let path = to_file_path(&album.item, track);
+
+                            let file = match File::open(&path) {
+                                Ok(file) => file,
+                                Err(_) => {
+                                    download_track(&path, &track.hq_audio_url);
+                                    File::open(&path).unwrap()
+                                }
+                            };
+
+                            let source = Decoder::try_from(file).expect("Error decoding file");
+                            sink.append(source);
+                        });
+                        sink.play();
+                    }
+                }
+            }
+            // TODO: vim keybindings might suggest the 'j' and 'k' keys should be used
+            // for down and up respectively
+            KeyCode::Up => {
+                self.album_list_state.scroll_up_by(1);
+            }
+            KeyCode::Down => {
+                self.album_list_state.scroll_down_by(1);
+            }
+            KeyCode::Char('q') => self.exit = true,
+            // KeyCode::Char(_) => ,
+            // KeyCode::Null => ,
+            // KeyCode::Esc => ,
+            // KeyCode::Pause => ,
+            // KeyCode::Media(media_key_code) => ,
+            // KeyCode::Modifier(modifier_key_code) => ,
+            _ => (),
+        }
+    }
 }
 
 fn from_bandcamp_item(item: Item) -> ItemVM {
@@ -118,12 +130,12 @@ fn from_bandcamp_item(item: Item) -> ItemVM {
     }
 }
 
-impl AppState {
+impl App {
     fn new(collection: Vec<ItemVM>) -> Self {
         let mut album_list_state = ListState::default();
         album_list_state.select(Some(0));
 
-        AppState {
+        App {
             exit: false,
             collection,
             album_list_state,
@@ -131,7 +143,7 @@ impl AppState {
     }
 }
 
-fn draw(frame: &mut Frame, app_state: &mut AppState) -> Result<()> {
+fn draw(frame: &mut Frame, app_state: &mut App) -> Result<()> {
     let outer_layout = Layout::default()
         .direction(Direction::Vertical)
         .margin(1)
