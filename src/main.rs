@@ -13,7 +13,7 @@ use ratatui::{
 };
 use reqwest::StatusCode;
 use rodio::{Decoder, OutputStreamBuilder};
-use rusty_piano::bandcamp::{BandCampClient, Track, write_collection};
+use rusty_piano::bandcamp::{BandCampClient, write_collection};
 use rusty_piano::secrets::{get_access_token, store_access_token};
 use rusty_piano::{bandcamp::Item, bandcamp::read_collection};
 
@@ -26,7 +26,7 @@ fn main() -> Result<()> {
     // Puts the terminal in raw mode, which disables line buffering (so rip to ctrl+c response)
     let terminal = ratatui::init();
 
-    let collection_as_vms: Vec<ItemVM> = collection.into_iter().map(from_bandcamp_item).collect();
+    let collection_as_vms: Vec<Album> = collection.into_iter().map(from_bandcamp_item).collect();
 
     let app = App::new(collection_as_vms);
 
@@ -38,18 +38,24 @@ fn main() -> Result<()> {
 }
 
 pub struct App {
-    pub exit: bool,
-    collection: Vec<ItemVM>,
-    pub album_list_state: ListState,
+    exit: bool,
+    collection: Vec<Album>,
+    album_list_state: ListState,
 }
 
-pub struct ItemVM {
-    item: Item,
-    pub is_downloaded: bool,
+pub struct Album {
+    title: String,
+    tracks: Vec<Track>,
+    is_downloaded: bool,
+}
+
+pub struct Track {
+    download_url: String,
+    file_path: PathBuf,
 }
 
 impl App {
-    fn new(collection: Vec<ItemVM>) -> Self {
+    fn new(collection: Vec<Album>) -> Self {
         let mut album_list_state = ListState::default();
         album_list_state.select(Some(0));
 
@@ -87,14 +93,14 @@ impl App {
                 if let Some(selected) = self.album_list_state.selected() {
                     if let Some(album) = self.collection.get(selected) {
                         sink.clear();
-                        album.item.tracks.iter().for_each(|track| {
-                            let path = to_file_path(&album.item, track);
+                        album.tracks.iter().for_each(|track| {
+                            let path = &track.file_path;
 
-                            let file = match File::open(&path) {
+                            let file = match File::open(path) {
                                 Ok(file) => file,
                                 Err(_) => {
-                                    download_track(&path, &track.hq_audio_url);
-                                    File::open(&path).unwrap()
+                                    download_track(path, &track.download_url);
+                                    File::open(path).unwrap()
                                 }
                             };
 
@@ -125,16 +131,22 @@ impl App {
     }
 }
 
-fn from_bandcamp_item(item: Item) -> ItemVM {
-    // figure out if everything is downloaded
-    let is_downloaded = item
+fn from_bandcamp_item(item: Item) -> Album {
+    let tracks = item
         .tracks
         .iter()
-        .map(|t| to_file_path(&item, t))
-        .all(|f| f.exists());
+        .map(|track| Track {
+            download_url: track.hq_audio_url.clone(),
+            file_path: to_file_path(&item, &track),
+        })
+        .collect::<Vec<Track>>();
 
-    ItemVM {
-        item,
+    // figure out if everything is downloaded
+    let is_downloaded = tracks.iter().all(|t| t.file_path.exists());
+
+    Album {
+        title: item.title,
+        tracks,
         is_downloaded,
     }
 }
@@ -162,9 +174,9 @@ impl Widget for &mut App {
         let album_titles = self
             .collection
             .iter()
-            .map(|i| {
-                let icon = if i.is_downloaded { '✓' } else { '⭳' };
-                format!("{} {icon}", i.item.title.clone())
+            .map(|album| {
+                let icon = if album.is_downloaded { '✓' } else { '⭳' };
+                format!("{} {icon}", album.title.clone())
             })
             .collect::<Vec<String>>();
 
@@ -204,7 +216,7 @@ fn download_track(path: &PathBuf, download_url: &str) {
     file.flush().expect("error finishing copy?");
 }
 
-fn to_file_path(album: &Item, track: &Track) -> PathBuf {
+fn to_file_path(album: &Item, track: &rusty_piano::bandcamp::Track) -> PathBuf {
     let mut band_name = album.band_info.name.clone();
     band_name.retain(filename_safe_char);
     let mut album_title = album.title.clone();
