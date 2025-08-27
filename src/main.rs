@@ -1,6 +1,8 @@
 use std::fs::{File, create_dir_all};
 use std::io::{Write, copy};
 use std::path::PathBuf;
+use std::sync::mpsc;
+use std::thread;
 
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
@@ -54,6 +56,12 @@ pub struct Track {
     file_path: PathBuf,
 }
 
+enum Event {
+    Input(KeyEvent),
+    // TODO: album title is a *terrible* identifier to pass back, for multiple reasons.
+    AlbumDownloadedEvent { title: String },
+}
+
 impl App {
     fn new(collection: Vec<Album>) -> Self {
         let mut album_list_state = ListState::default();
@@ -71,13 +79,26 @@ impl App {
             OutputStreamBuilder::open_default_stream().expect("Error opening default audio stream");
         let sink = rodio::Sink::connect_new(stream_handle.mixer());
 
+        let (mpsc_tx, mpsc_rx) = mpsc::channel();
+        let ui_thread_mpsc_tx = mpsc_tx.clone();
+
+        // TODO: error handling. If this input thread panics, how do I notify the main thread and exit the application?
+        // Also, do I need a mechanism to safely stop this thread so I can join it later? I think the host OS will clean up
+        // orphaned threads when the application closes... 🤔
+        thread::spawn(move || {
+            loop {
+                if let crossterm::event::Event::Key(key_event) = crossterm::event::read().unwrap() {
+                    ui_thread_mpsc_tx.send(Event::Input(key_event)).unwrap();
+                }
+            }
+        });
+
         while !self.exit {
             terminal.draw(|frame| frame.render_widget(&mut self, frame.area()))?;
 
-            // TODO: change event read to not be blocking so we can get UI updates without waiting for a key press
-            // e.g., we want to update the "is_downloaded" field and register that without waiting for a UI re-render
-            if let crossterm::event::Event::Key(key_event) = crossterm::event::read()? {
-                self.handle_key(key_event, &sink);
+            match mpsc_rx.recv()? {
+                Event::Input(key_event) => self.handle_key(key_event, &sink),
+                Event::AlbumDownloadedEvent { title } => todo!(),
             }
         }
 
@@ -113,6 +134,9 @@ impl App {
             }
             // TODO: vim keybindings might suggest the 'j' and 'k' keys should be used
             // for down and up respectively
+            // YouTube uses 'j' for back-ten-seconds, 'k' for play/pause, and 'l' for skip-ten-seconds
+            // Should I do something similar, except maybe use j/l for back/skip-one-track?
+            // Does this suggest two different input modes, one for album/track navigation, and one for playback control?
             KeyCode::Up => {
                 self.album_list_state.scroll_up_by(1);
             }
