@@ -15,13 +15,14 @@ use ratatui::{
 };
 use reqwest::StatusCode;
 use rodio::{Decoder, OutputStream, OutputStreamBuilder, Sink};
+use rusty_piano::json_l::{read_lines, write_lines};
 use rusty_piano::{
-    bandcamp::{BandCampClient, Item, read_collection, write_collection},
+    bandcamp::{BandCampClient, Item},
     secrets::{get_access_token, store_access_token},
 };
 
 fn main() -> Result<()> {
-    let collection = read_collection().unwrap_or_else(|e| {
+    let collection = read_lines("collection.jsonl").unwrap_or_else(|e| {
         error!("{e:?}");
         cache_collection()
     });
@@ -322,7 +323,7 @@ fn cache_collection() -> Vec<Item> {
     );
     // assert_eq!(7, unique_count);
 
-    write_collection(&items);
+    write_lines("collection.jsonl", &items);
 
     items
 }
