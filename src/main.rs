@@ -48,7 +48,8 @@ fn main() -> Result<()> {
                                 album.tracks.iter().for_each(|t| {
                                     // TODO: update download_track to return a Result<...> to prompt for re-chaching the collection
                                     // Bandcamp URLs eventually return a 410 gone response when the download link is no longer valid
-                                    let file = download_track(&album, t);
+                                    let path = download_track(&album, t);
+                                    let file = File::open(path).unwrap();
                                     let source =
                                         Decoder::try_from(file).expect("Error decoding file");
                                     sink.append(source);
@@ -146,23 +147,23 @@ fn draw(frame: &mut Frame, app_state: &mut AppState) -> Result<()> {
     Ok(())
 }
 
-fn download_track(album: &Item, track: &Track) -> File {
-    // TODO: Path escape and trim all of the injected path parts (from album and track)
-    // The album "tempor / jester" by Breaded Penguin resulted in a jester subdirectory
-    // I suspect other path navigation is not safe
-    let mut path = PathBuf::from(format!(
-        "./bandcamp/{}/{}",
-        album.band_info.name, album.title
-    ));
+fn download_track(album: &Item, track: &Track) -> PathBuf {
+    let mut band_name = album.band_info.name.clone();
+    band_name.retain(filename_safe_char);
+    let mut album_title = album.title.clone();
+    album_title.retain(filename_safe_char);
+    let mut path = PathBuf::from(format!("./bandcamp/{band_name}/{album_title}"));
     create_dir_all(&path).unwrap();
 
-    path.push(format!("{:02} - {}.mp3", track.track_number, track.title));
+    let mut track_title = track.title.clone();
+    track_title.retain(filename_safe_char);
+    path.push(format!("{:02} - {track_title}.mp3", track.track_number));
 
-    if let Ok(file) = File::open(&path) {
-        return file;
+    if File::open(&path).is_ok() {
+        // Technically, the file may not have been completely written to, so the path might be bad,
+        // but we'll trust that if it exists, it was written to succesfully
+        return path;
     }
-
-    let mut file = File::create(&path).unwrap();
 
     // TODO: should I only have one client?
     let mut download_response = reqwest::blocking::Client::new()
@@ -170,16 +171,17 @@ fn download_track(album: &Item, track: &Track) -> File {
         .send()
         .expect("Error downloading file");
 
-    assert_eq!(StatusCode::OK, download_response.status());
-
     // Bandcamp will return a 410, Gone response when the link is no longer valid
     // I suspect the link is only valid for some amount of time.
     // Maybe as long as the access token, which is about an hour. Not sure.
+    assert_eq!(StatusCode::OK, download_response.status());
+
+    let mut file = File::create(&path).unwrap();
 
     copy(&mut download_response, &mut file).expect("error copying download to file");
     file.flush().expect("error finishing copy?");
 
-    File::open(path).unwrap()
+    path
 }
 
 fn cache_collection() -> Vec<Item> {
@@ -234,4 +236,10 @@ fn prompt(param: &str) -> String {
         .read_line(&mut input)
         .expect("Error reading standard in");
     input.trim_end().to_owned()
+}
+
+// This is incomplete, but works for now as it address the one album in my library with a problem:
+// The album "tempor / jester" by A Unicorn Masquerade resulted in a jester subdirectory
+fn filename_safe_char(char: char) -> bool {
+    char != '/'
 }
