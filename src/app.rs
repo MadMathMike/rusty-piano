@@ -1,3 +1,4 @@
+use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use ratatui::widgets::ListState;
 use reqwest::StatusCode;
@@ -6,7 +7,7 @@ use std::fs::{File, create_dir_all};
 use std::io::{Write, copy};
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::mpsc;
+use std::sync::mpsc::{self, Sender};
 use std::thread;
 
 pub struct App {
@@ -14,8 +15,8 @@ pub struct App {
     // TODO: rename collection to albums (or rename album_list_state to collection_list_state)
     pub collection: Vec<Album>,
     pub album_list_state: ListState,
-    pub sink: Sink,
-    pub channel: (mpsc::Sender<Event>, mpsc::Receiver<Event>),
+    sink: Sink,
+    channel: (mpsc::Sender<Event>, mpsc::Receiver<Event>),
 }
 
 pub enum DownloadStatus {
@@ -61,7 +62,19 @@ impl App {
         }
     }
 
-    pub fn handle_key(&mut self, key: KeyEvent) {
+    pub fn clone_sender(&self) -> Sender<Event> {
+        self.channel.0.clone()
+    }
+
+    pub fn handle_next_event(&mut self) -> Result<()> {
+        match self.channel.1.recv()? {
+            Event::Input(key_event) => self.handle_key(key_event),
+            Event::AlbumDownloadedEvent { title } => self.handle_album_downloaded(&title),
+        }
+        Ok(())
+    }
+
+    fn handle_key(&mut self, key: KeyEvent) {
         if key.kind != KeyEventKind::Press {
             return;
         }
@@ -124,7 +137,7 @@ impl App {
         }
     }
 
-    pub fn handle_album_downloaded(&mut self, album_title: &str) {
+    fn handle_album_downloaded(&mut self, album_title: &str) {
         let album = self
             .collection
             .iter_mut()

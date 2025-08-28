@@ -34,7 +34,7 @@ fn main() -> Result<()> {
         OutputStreamBuilder::open_default_stream().expect("Error opening default audio stream");
     let mut app = App::new(collection_as_vms, &stream_handle);
 
-    let ui_thread_mpsc_tx = app.channel.0.clone();
+    let ui_thread_mpsc_tx = app.clone_sender();
 
     // TODO: error handling. If this input thread panics, how do I notify the main thread and exit the application?
     thread::spawn(move || {
@@ -47,13 +47,8 @@ fn main() -> Result<()> {
 
     while !app.exit {
         terminal.draw(|frame| draw(frame, &mut app).unwrap())?;
-        // terminal.draw(|frame| frame.render_widget(&mut app, frame.area()))?;
 
-        match app.channel.1.recv()? {
-            Event::Input(key_event) => app.handle_key(key_event),
-
-            Event::AlbumDownloadedEvent { title } => app.handle_album_downloaded(&title),
-        }
+        app.handle_next_event()?;
     }
 
     // Returns the terminal back to normal mode
