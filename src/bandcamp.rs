@@ -17,6 +17,7 @@ pub struct BandCampClient {
 impl BandCampClient {
     fn new() -> Self {
         let mut default_headers = HeaderMap::default();
+        // TODO: user agent can/should be an input parameter so it can be shared across other clients?
         default_headers.append(USER_AGENT, HeaderValue::from_static("rusty-piano/0.1"));
         default_headers.append(
             "X-Requested-With",

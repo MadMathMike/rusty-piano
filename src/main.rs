@@ -1,6 +1,7 @@
 use std::fs::{File, create_dir_all};
 use std::io::{Write, copy};
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::mpsc;
 use std::thread;
 
@@ -22,10 +23,11 @@ use rusty_piano::{
 };
 
 fn main() -> Result<()> {
-    let collection = read_lines("collection.jsonl").unwrap_or_else(|e| {
-        error!("{e:?}");
-        cache_collection()
-    });
+    let collection =
+        read_lines(&PathBuf::from_str("collection.jsonl").unwrap()).unwrap_or_else(|e| {
+            error!("{e:?}");
+            cache_collection()
+        });
 
     // Puts the terminal in raw mode, which disables line buffering (so rip to ctrl+c response)
     let mut terminal = ratatui::init();
@@ -323,7 +325,10 @@ fn cache_collection() -> Vec<Item> {
     );
     // assert_eq!(7, unique_count);
 
-    write_lines("collection.jsonl", &items);
+    write_lines(
+        &PathBuf::from_str("collection.jsonl").unwrap(),
+        items.iter(),
+    );
 
     items
 }
