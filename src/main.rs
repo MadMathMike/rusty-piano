@@ -17,6 +17,9 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::thread;
 
+// TODO: In manual testing in the Konsole, an error downloading a file (e.g., 410 from bandcamp)
+// resulted in the UI getting replaced with an error, the music still playing, and the app stuck
+
 fn main() -> Result<()> {
     let collection =
         read_lines(&PathBuf::from_str("collection.jsonl").unwrap()).unwrap_or_else(|e| {
