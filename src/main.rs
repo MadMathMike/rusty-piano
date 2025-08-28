@@ -74,11 +74,17 @@ pub struct App {
     channel: (mpsc::Sender<Event>, mpsc::Receiver<Event>),
 }
 
+pub enum DownloadStatus {
+    NotDownloaded,
+    Downloading,
+    Downloaded,
+    // DownloadFailed(Error + Sync + Send),
+}
+
 pub struct Album {
     title: String,
     tracks: Vec<Track>,
-    // TODO: switch this to enum for NotDownloaded, Downloading, Downloaded, DownloadFailed
-    is_downloaded: bool,
+    download_status: DownloadStatus,
 }
 
 #[derive(Clone)]
@@ -118,39 +124,27 @@ impl App {
         match key.code {
             KeyCode::Enter => {
                 if let Some(selected) = self.album_list_state.selected() {
-                    if let Some(album) = self.collection.get(selected) {
-                        // TODO: if album is downloading (or download failed), do not kick off new thread to download it!
-                        // TODO: if album is downloaded, clear sink and add songs to the sink
+                    if let Some(album) = self.collection.get_mut(selected) {
+                        match album.download_status {
+                            DownloadStatus::Downloaded => play_album(&self.sink, album),
+                            DownloadStatus::NotDownloaded => {
+                                album.download_status = DownloadStatus::Downloading;
+                                let tracks = album.tracks.to_owned();
+                                let download_thread_mpsc_tx = self.channel.0.clone();
+                                let album_title = album.title.clone();
+                                thread::spawn(move || {
+                                    tracks.iter().for_each(|track| {
+                                        download_track(&track.file_path, &track.download_url)
+                                    });
 
-                        // self.sink.clear();
-
-                        let tracks = album.tracks.to_owned(); // This works thanks to deriving Clone on the Track struct
-                        let download_thread_mpsc_tx = self.channel.0.clone();
-                        let album_title = album.title.clone();
-                        thread::spawn(move || {
-                            tracks.iter().for_each(|track| {
-                                download_track(&track.file_path, &track.download_url)
-                            });
-
-                            download_thread_mpsc_tx
-                                .send(Event::AlbumDownloadedEvent { title: album_title })
-                        });
-
-                        // album.tracks.iter().for_each(|track| {
-                        //     let path = &track.file_path;
-
-                        //     let file = match File::open(path) {
-                        //         Ok(file) => file,
-                        //         Err(_) => {
-                        //             download_track(path, &track.download_url);
-                        //             File::open(path).unwrap()
-                        //         }
-                        //     };
-
-                        //     let source = Decoder::try_from(file).expect("Error decoding file");
-                        //     self.sink.append(source);
-                        // });
-                        // self.sink.play();
+                                    download_thread_mpsc_tx
+                                        .send(Event::AlbumDownloadedEvent { title: album_title })
+                                });
+                            }
+                            DownloadStatus::Downloading => {}
+                        }
+                    } else {
+                        println!("uh oh!");
                     }
                 }
             }
@@ -166,6 +160,14 @@ impl App {
                 self.album_list_state.scroll_down_by(1);
             }
             KeyCode::Char('q') => self.exit = true,
+            KeyCode::Char(' ') => {
+                self.sink.clear();
+                let file_path = PathBuf::from_str("./file_example_MP3_2MG.mp3").unwrap();
+                let file = File::open(file_path).expect("Couldn't find file?");
+                let source = Decoder::try_from(file).expect("Error decoding file");
+                self.sink.append(source);
+                self.sink.play();
+            }
             // KeyCode::Char(_) => ,
             // KeyCode::Null => ,
             // KeyCode::Esc => ,
@@ -177,23 +179,40 @@ impl App {
     }
 
     fn handle_album_downloaded(&mut self, album_title: &str) {
-        if let Some(album) = self
+        let album = self
             .collection
             .iter_mut()
-            .find(|album| album.title.eq(album_title))
-        {
-            album.is_downloaded = true;
+            .find(|album| album.title.eq(album_title));
 
-            if self.sink.empty() {
-                album.tracks.iter().for_each(|track| {
-                    let file = File::open(&track.file_path)
-                        .expect("Song should have been downloaded already 😬");
-                    let source = Decoder::try_from(file).expect("Error decoding file");
-                    self.sink.append(source);
-                });
-            }
+        // TODO: "this shouldn't happen 🤪" (self deprecating)
+        let album = album.expect("Album not found in collection");
+
+        album.download_status = DownloadStatus::Downloaded;
+
+        if self.sink.empty() {
+            self.sink.clear();
+
+            album.tracks.iter().for_each(|track| {
+                let file = File::open(&track.file_path)
+                    .expect("Song should have been downloaded already 😬");
+                let source = Decoder::try_from(file).expect("Error decoding file");
+                self.sink.append(source);
+            });
         }
     }
+}
+
+fn play_album(sink: &Sink, album: &Album) {
+    sink.clear();
+
+    album.tracks.iter().for_each(|track| {
+        let file =
+            File::open(&track.file_path).expect("Song should have been downloaded already 😬");
+        let source = Decoder::try_from(file).expect("Error decoding file");
+        sink.append(source);
+    });
+
+    sink.play();
 }
 
 fn from_bandcamp_item(item: Item) -> Album {
@@ -207,12 +226,16 @@ fn from_bandcamp_item(item: Item) -> Album {
         .collect::<Vec<Track>>();
 
     // figure out if everything is downloaded
-    let is_downloaded = tracks.iter().all(|t| t.file_path.exists());
+    let download_status = if tracks.iter().all(|t| t.file_path.exists()) {
+        DownloadStatus::Downloaded
+    } else {
+        DownloadStatus::NotDownloaded
+    };
 
     Album {
         title: item.title,
         tracks,
-        is_downloaded,
+        download_status,
     }
 }
 
@@ -240,7 +263,11 @@ impl Widget for &mut App {
             .collection
             .iter()
             .map(|album| {
-                let icon = if album.is_downloaded { '✓' } else { '⭳' };
+                let icon = match album.download_status {
+                    DownloadStatus::NotDownloaded => '⭳',
+                    DownloadStatus::Downloading => '⏳',
+                    DownloadStatus::Downloaded => '✓',
+                };
                 format!("{} {icon}", album.title.clone())
             })
             .collect::<Vec<String>>();

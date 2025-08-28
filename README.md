@@ -10,9 +10,9 @@ Goal: build a terminal app using Rust that can play collected albums from your ~
 - [x] Pull down (and cache?) entire collection (must use paging)
 - [x] Play songs from album consecutively
 - [ ] UI: View songs in album
-- [ ] UI: Download state
-  - [ ] Show when album is downloaded
-  - [ ] Show when album is downloading
+- [x] UI: Download state
+  - [x] Show when album is downloaded
+  - [x] Show when album is downloading
 - [x] UI: View albums
 - [ ] UI: Playback controls
   - [ ] Play/pause (space bar?)
