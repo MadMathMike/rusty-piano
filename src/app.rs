@@ -11,6 +11,7 @@ use std::thread;
 
 pub struct App {
     pub exit: bool,
+    // TODO: rename collection to albums (or rename album_list_state to collection_list_state)
     pub collection: Vec<Album>,
     pub album_list_state: ListState,
     pub sink: Sink,
@@ -67,28 +68,7 @@ impl App {
         match key.code {
             KeyCode::Enter => {
                 if let Some(selected) = self.album_list_state.selected() {
-                    if let Some(album) = self.collection.get_mut(selected) {
-                        match album.download_status {
-                            DownloadStatus::Downloaded => play_album(&self.sink, album),
-                            DownloadStatus::NotDownloaded => {
-                                album.download_status = DownloadStatus::Downloading;
-                                let tracks = album.tracks.to_owned();
-                                let download_thread_mpsc_tx = self.channel.0.clone();
-                                let album_title = album.title.clone();
-                                thread::spawn(move || {
-                                    tracks.iter().for_each(|track| {
-                                        download_track(&track.file_path, &track.download_url)
-                                    });
-
-                                    download_thread_mpsc_tx
-                                        .send(Event::AlbumDownloadedEvent { title: album_title })
-                                });
-                            }
-                            DownloadStatus::Downloading => {}
-                        }
-                    } else {
-                        println!("uh oh!");
-                    }
+                    self.handle_album_selected(selected);
                 }
             }
             // TODO: vim keybindings might suggest the 'j' and 'k' keys should be used
@@ -121,6 +101,29 @@ impl App {
         }
     }
 
+    fn handle_album_selected(&mut self, selected: usize) {
+        if let Some(album) = self.collection.get_mut(selected) {
+            match album.download_status {
+                DownloadStatus::Downloaded => play_album(&self.sink, album),
+                DownloadStatus::NotDownloaded => {
+                    album.download_status = DownloadStatus::Downloading;
+                    let tracks = album.tracks.to_owned();
+                    let download_thread_mpsc_tx = self.channel.0.clone();
+                    let album_title = album.title.clone();
+                    thread::spawn(move || {
+                        tracks.iter().for_each(|track| {
+                            download_track(&track.file_path, &track.download_url)
+                        });
+
+                        download_thread_mpsc_tx
+                            .send(Event::AlbumDownloadedEvent { title: album_title })
+                    });
+                }
+                DownloadStatus::Downloading => {}
+            }
+        }
+    }
+
     pub fn handle_album_downloaded(&mut self, album_title: &str) {
         let album = self
             .collection
@@ -133,14 +136,7 @@ impl App {
         album.download_status = DownloadStatus::Downloaded;
 
         if self.sink.empty() {
-            self.sink.clear();
-
-            album.tracks.iter().for_each(|track| {
-                let file = File::open(&track.file_path)
-                    .expect("Song should have been downloaded already 😬");
-                let source = Decoder::try_from(file).expect("Error decoding file");
-                self.sink.append(source);
-            });
+            play_album(&self.sink, album);
         }
     }
 }
