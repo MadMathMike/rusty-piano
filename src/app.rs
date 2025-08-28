@@ -1,19 +1,13 @@
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
+use ratatui::widgets::ListState;
+use reqwest::StatusCode;
+use rodio::{Decoder, OutputStream, Sink};
 use std::fs::{File, create_dir_all};
 use std::io::{Write, copy};
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::mpsc;
 use std::thread;
-
-use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
-use ratatui::{
-    layout::{Constraint, Direction, Layout},
-    prelude::*,
-    widgets::ListState,
-    widgets::{Block, Borders, List, Paragraph},
-};
-use reqwest::StatusCode;
-use rodio::{Decoder, OutputStream, Sink};
 
 pub struct App {
     pub exit: bool,
@@ -43,6 +37,7 @@ pub struct Track {
 }
 
 pub enum Event {
+    // TODO: consider abstracting away from crossterm events
     Input(KeyEvent),
     // TODO: album title is a *terrible* identifier to pass back, for multiple reasons.
     AlbumDownloadedEvent { title: String },
@@ -179,55 +174,4 @@ fn download_track(path: &PathBuf, download_url: &str) {
 
     copy(&mut download_response, &mut file).expect("error copying download to file");
     file.flush().expect("error finishing copy?");
-}
-
-impl Widget for &mut App {
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        let [header, body, footer] = Layout::default()
-            .direction(Direction::Vertical)
-            .margin(1)
-            .constraints(vec![
-                Constraint::Length(1),
-                Constraint::Fill(1),
-                Constraint::Length(3),
-            ])
-            .areas(area);
-
-        Line::from("hello world").render(header, buf);
-
-        let [left, right] = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints(vec![Constraint::Percentage(40), Constraint::Percentage(60)])
-            .areas(body);
-
-        // Iterate through all elements in the `items` and stylize them.
-        let album_titles = self
-            .collection
-            .iter()
-            .map(|album| {
-                let icon = match album.download_status {
-                    DownloadStatus::NotDownloaded => '⭳',
-                    DownloadStatus::Downloading => '⏳',
-                    DownloadStatus::Downloaded => '✓',
-                };
-                format!("{} {icon}", album.title.clone())
-            })
-            .collect::<Vec<String>>();
-
-        let list = List::new(album_titles)
-            .block(Block::bordered().title("Albums"))
-            .highlight_symbol(">");
-
-        // frame.render_widget(
-        //     list, //Paragraph::new("Left").block(Block::new().borders(Borders::ALL)),
-        //     body[0],
-        // );
-        StatefulWidget::render(list, left, buf, &mut self.album_list_state);
-
-        Paragraph::new("Right")
-            .block(Block::new().borders(Borders::ALL))
-            .render(right, buf);
-
-        Line::from("woah").render(footer, buf);
-    }
 }
