@@ -48,6 +48,8 @@ fn main() -> Result<()> {
         }
     });
 
+    // TODO: listen for window resize events?
+
     while !app.exit {
         terminal.draw(|frame| draw(frame, &mut app).unwrap())?;
 
@@ -183,9 +185,10 @@ fn draw(frame: &mut Frame, app: &mut App) -> Result<()> {
         .iter()
         .map(|album| {
             let icon = match album.download_status {
-                DownloadStatus::NotDownloaded => '⭳',
+                DownloadStatus::NotDownloaded => '💾',
                 DownloadStatus::Downloading => '⏳',
-                DownloadStatus::Downloaded => '✓',
+                DownloadStatus::Downloaded => '✅',
+                DownloadStatus::DownloadFailed => '🚨',
             };
             format!("{} {icon}", album.title.clone())
         })

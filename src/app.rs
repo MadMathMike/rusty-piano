@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use ratatui::widgets::ListState;
 use reqwest::StatusCode;
@@ -23,7 +23,7 @@ pub enum DownloadStatus {
     NotDownloaded,
     Downloading,
     Downloaded,
-    // DownloadFailed(Error + Sync + Send),
+    DownloadFailed,
 }
 
 pub struct Album {
@@ -43,6 +43,7 @@ pub enum Event {
     Input(KeyEvent),
     // TODO: album title is a *terrible* identifier to pass back, for multiple reasons.
     AlbumDownloadedEvent { title: String },
+    AlbumDownLoadFailed { title: String },
 }
 
 impl App {
@@ -68,13 +69,14 @@ impl App {
 
     pub fn handle_next_event(&mut self) -> Result<()> {
         match self.channel.1.recv()? {
-            Event::Input(key_event) => self.handle_key(key_event),
-            Event::AlbumDownloadedEvent { title } => self.handle_album_downloaded(&title),
+            Event::Input(key_event) => self.on_key_event(key_event),
+            Event::AlbumDownloadedEvent { title } => self.on_album_downloaded(&title),
+            Event::AlbumDownLoadFailed { title } => self.on_album_download_failed(&title),
         }
         Ok(())
     }
 
-    fn handle_key(&mut self, key: KeyEvent) {
+    fn on_key_event(&mut self, key: KeyEvent) {
         if key.kind != KeyEventKind::Press {
             return;
         }
@@ -120,24 +122,30 @@ impl App {
                 DownloadStatus::Downloaded => play_album(&self.sink, album),
                 DownloadStatus::NotDownloaded => {
                     album.download_status = DownloadStatus::Downloading;
-                    let tracks = album.tracks.to_owned();
+                    let tracks = album.tracks.clone();
                     let download_thread_mpsc_tx = self.channel.0.clone();
                     let album_title = album.title.clone();
                     thread::spawn(move || {
-                        tracks.iter().for_each(|track| {
-                            download_track(&track.file_path, &track.download_url)
-                        });
+                        let download_failure = tracks
+                            .iter()
+                            .map(|track| download_track(&track.file_path, &track.download_url))
+                            .find(|result| result.is_err());
 
-                        download_thread_mpsc_tx
-                            .send(Event::AlbumDownloadedEvent { title: album_title })
+                        match download_failure {
+                            None => download_thread_mpsc_tx
+                                .send(Event::AlbumDownloadedEvent { title: album_title }),
+                            Some(_) => download_thread_mpsc_tx
+                                .send(Event::AlbumDownLoadFailed { title: album_title }),
+                        }
                     });
                 }
                 DownloadStatus::Downloading => {}
+                DownloadStatus::DownloadFailed => { /* Prompt to rebuild collection */ }
             }
         }
     }
 
-    fn handle_album_downloaded(&mut self, album_title: &str) {
+    fn on_album_downloaded(&mut self, album_title: &str) {
         let album = self
             .collection
             .iter_mut()
@@ -151,6 +159,18 @@ impl App {
         if self.sink.empty() {
             play_album(&self.sink, album);
         }
+    }
+
+    fn on_album_download_failed(&mut self, album_title: &str) {
+        let album = self
+            .collection
+            .iter_mut()
+            .find(|album| album.title.eq(album_title));
+
+        // TODO: "this shouldn't happen 🤪" (self deprecating)
+        let album = album.expect("Album not found in collection");
+
+        album.download_status = DownloadStatus::DownloadFailed;
     }
 }
 
@@ -167,20 +187,27 @@ fn play_album(sink: &Sink, album: &Album) {
     sink.play();
 }
 
-// TODO: update download_track to return a Result<...> to prompt for re-chaching the collection
-// Bandcamp URLs eventually return a 410 gone response when the download link is no longer valid
-fn download_track(path: &PathBuf, download_url: &str) {
+fn download_track(path: &PathBuf, download_url: &str) -> Result<()> {
     // TODO: should I only have one client?
     let mut download_response = reqwest::blocking::Client::new()
         .get(download_url)
         .send()
         .expect("Error downloading file");
 
-    assert_eq!(StatusCode::OK, download_response.status());
+    match download_response.status() {
+        StatusCode::OK => {
+            create_dir_all(path.parent().unwrap()).unwrap();
+            let mut file = File::create(&path).unwrap();
 
-    create_dir_all(path.parent().unwrap()).unwrap();
-    let mut file = File::create(&path).unwrap();
+            copy(&mut download_response, &mut file).expect("error copying download to file");
+            file.flush().expect("error finishing copy?");
 
-    copy(&mut download_response, &mut file).expect("error copying download to file");
-    file.flush().expect("error finishing copy?");
+            Ok(())
+        }
+        // Bandcamp URLs eventually return a 410-Gone response when the download link is no longer valid
+        _ => Err(anyhow!(
+            "Download status code: {}",
+            download_response.status()
+        )),
+    }
 }
