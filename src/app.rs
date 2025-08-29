@@ -83,7 +83,7 @@ impl App {
         match key.code {
             KeyCode::Enter => {
                 if let Some(selected) = self.album_list_state.selected() {
-                    self.handle_album_selected(selected);
+                    self.on_album_selected(selected);
                 }
             }
             // TODO: vim keybindings might suggest the 'j' and 'k' keys should be used
@@ -99,6 +99,14 @@ impl App {
             }
             KeyCode::Char('q') => self.exit = true,
             KeyCode::Char(' ') => {
+                if self.sink.is_paused() {
+                    self.sink.play();
+                } else {
+                    self.sink.pause();
+                }
+            }
+            // 't' for test? As in, play test sound? I guess that's fine if we don't need t for anything else
+            KeyCode::Char('t') => {
                 self.sink.clear();
                 let file_path = PathBuf::from_str("./file_example_MP3_2MG.mp3").unwrap();
                 let file = File::open(file_path).expect("Couldn't find file?");
@@ -116,7 +124,7 @@ impl App {
         }
     }
 
-    fn handle_album_selected(&mut self, selected: usize) {
+    fn on_album_selected(&mut self, selected: usize) {
         if let Some(album) = self.collection.get_mut(selected) {
             match album.download_status {
                 DownloadStatus::Downloaded => play_album(&self.sink, album),
