@@ -12,7 +12,6 @@ use rusty_piano::json_l::{read_lines, write_lines};
 use rusty_piano::{
     app::*,
     bandcamp::{BandCampClient, Item},
-    secrets::{get_access_token, store_access_token},
 };
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -109,10 +108,7 @@ fn to_file_path(album: &Item, track: &rusty_piano::bandcamp::Track) -> PathBuf {
 }
 
 fn cache_collection() -> Vec<Item> {
-    let client = match get_access_token() {
-        Some(token) => BandCampClient::init_with_token(token.clone()).unwrap_or_else(login),
-        None => login(),
-    };
+    let client = login();
 
     // TODO: add logging that states the collection is being cached
     let items = client.get_entire_collection(5);
@@ -149,11 +145,12 @@ fn login() -> BandCampClient {
         println!("Password:");
         let password = read_password().unwrap();
 
-        // TODO: reprompt while initialization fails
-        if let Some((client, token)) = BandCampClient::init(&username, &password) {
-            store_access_token(&token);
+        if let Ok(client) = BandCampClient::new(&username, &password) {
             return client;
         }
+
+        // TODO: actually print out the errors.
+        println!("Something went wrong initializing the client. Try again.");
     }
 }
 

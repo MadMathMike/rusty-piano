@@ -1,5 +1,5 @@
 use crate::crypto;
-
+use anyhow::Result;
 use reqwest::{
     StatusCode,
     blocking::Client,
@@ -10,12 +10,12 @@ use std::collections::HashMap;
 
 pub struct BandCampClient {
     client: Client,
-    access_token: Option<String>,
+    access_token: String,
 }
 
 #[allow(clippy::new_without_default)]
 impl BandCampClient {
-    fn new() -> Self {
+    pub fn new(username: &str, password: &str) -> Result<Self> {
         let mut default_headers = HeaderMap::default();
         // TODO: user agent can/should be an input parameter so it can be shared across other clients?
         default_headers.append(USER_AGENT, HeaderValue::from_static("rusty-piano/0.1"));
@@ -30,135 +30,12 @@ impl BandCampClient {
             .build()
             .expect("Error creating reqwest client");
 
-        Self {
+        let login_response = login(&client, username, password)?;
+
+        Ok(Self {
             client,
-            access_token: None,
-        }
-    }
-
-    pub fn init(username: &str, password: &str) -> Option<(BandCampClient, String)> {
-        let mut bandcamp_client = BandCampClient::new();
-        let login_response = bandcamp_client.login(username, password);
-
-        bandcamp_client.access_token = Some(login_response.access_token.clone());
-        Some((bandcamp_client, login_response.access_token))
-    }
-
-    pub fn init_with_token(token: String) -> Option<BandCampClient> {
-        let mut bandcamp_client = BandCampClient::new();
-        let collection_response = bandcamp_client
-            .client
-            .get("https://bandcamp.com/api/collectionsync/1/collection")
-            .query(&[("page_size", "1"), ("tralbum_type", "a"), ("enc", "alac")])
-            .bearer_auth(token.clone())
-            .send()
-            .expect("Error calling collection api");
-
-        let status_code = collection_response.status();
-        let response_body = collection_response.text().unwrap();
-        println!("{}", &response_body);
-
-        if StatusCode::is_success(&status_code) {
-            bandcamp_client.access_token = Some(token);
-            Some(bandcamp_client)
-        } else {
-            None
-        }
-    }
-
-    // https://github.com/Metalnem/bandcamp-downloader
-    // https://mijailovic.net/2024/04/04/bandcamp-auth/
-    fn login(&self, username: &str, password: &str) -> LoginResponse {
-        let mut params = HashMap::new();
-        params.insert("username", username);
-        params.insert("password", password);
-        params.insert("grant_type", "password");
-        params.insert("client_id", "134");
-        params.insert(
-            "client_secret",
-            "1myK12VeCL3dWl9o/ncV2VyUUbOJuNPVJK6bZZJxHvk=",
-        );
-
-        let mut login_request = self
-            .client
-            .post("https://bandcamp.com/oauth_login")
-            .form(&params)
-            .build()
-            .unwrap();
-
-        let login_request_clone = login_request.try_clone().unwrap();
-        let body_bytes = login_request_clone.body().unwrap().as_bytes().unwrap();
-
-        let hashed_body = crypto::hmac_sha1_from_bytes_as_hex("dtmfa", body_bytes);
-        let x_bandcamp_dm = HeaderValue::from_str(&hashed_body).unwrap();
-
-        login_request
-            .headers_mut()
-            .append("X-Bandcamp-Dm", x_bandcamp_dm);
-
-        let login_response = self
-            .client
-            .execute(login_request)
-            .expect("Error making call to oauth_login");
-
-        assert_eq!(StatusCode::IM_A_TEAPOT, login_response.status());
-
-        let x_bandcamp_dm_header = login_response.headers().get("X-Bandcamp-Dm").unwrap();
-        let x_bandcamp_dm = x_bandcamp_dm_header.to_str().unwrap();
-        let last_char = x_bandcamp_dm.chars().rev().take(1).collect::<String>();
-        let i = usize::from_str_radix(&last_char, 16).unwrap();
-        let ith_char = x_bandcamp_dm.chars().nth(i).unwrap();
-        let algorithm = usize::from_str_radix(&String::from(ith_char), 16).unwrap();
-        assert_eq!(1, algorithm);
-        // Calculate new x-bandcamp-dm header based on int value
-        // if 3 => hmacsha256 of stuff
-        // if 4 => hmacsha512 of stuff?
-        // otherwise
-        // if 1 => hmac_sha1([0..19] + [22..] + body)
-        // else
-
-        let mut to_hash = String::with_capacity(38);
-        to_hash.push_str(&x_bandcamp_dm[0..19]);
-        to_hash.push_str(&x_bandcamp_dm[22..]);
-
-        let mut login_request = self
-            .client
-            .post("https://bandcamp.com/oauth_login")
-            .form(&params)
-            .build()
-            .unwrap();
-
-        let body_bytes = login_request
-            .try_clone()
-            .unwrap()
-            .body()
-            .unwrap()
-            .as_bytes()
-            .unwrap()
-            .to_vec();
-        let body_string = String::from_utf8(body_bytes).unwrap();
-        to_hash.push_str(&body_string);
-
-        let hashed_body = crypto::hmac_sha1_as_hex("dtmfa", &to_hash);
-        let x_bandcamp_dm = HeaderValue::from_str(&hashed_body).unwrap();
-
-        login_request
-            .headers_mut()
-            .append("X-Bandcamp-Dm", x_bandcamp_dm);
-
-        let login_response = self
-            .client
-            .execute(login_request)
-            .expect("Error making call to oauth_login");
-
-        assert_eq!(login_response.status(), StatusCode::OK);
-
-        // If parsing fails, it could be because we received a response like this:
-        // {"error":"emailVerificationRequired","error_description":"Please first re-verify your account using the link we just emailed to you."}
-        // {"error":"nameNoMatch","error_description":"Unknown username or email"}
-        login_response
-            .json::<LoginResponse>()
-            .expect("Failed to parse login response")
+            access_token: login_response.access_token.clone(),
+        })
     }
 
     // TODO: would be fun to turn this into an iter, maybe an async iter
@@ -194,7 +71,7 @@ impl BandCampClient {
             .client
             .get("https://bandcamp.com/api/collectionsync/1/collection")
             .query(&query)
-            .bearer_auth(self.access_token.clone().expect("Uninitialized client"))
+            .bearer_auth(self.access_token.clone())
             .send()
             .expect("Error calling collection api");
 
@@ -205,6 +82,96 @@ impl BandCampClient {
         serde_json::from_str::<CollectionResponse>(&response_body)
             .expect("Failure parsing collection response")
     }
+}
+
+// https://github.com/Metalnem/bandcamp-downloader
+// https://mijailovic.net/2024/04/04/bandcamp-auth/
+// TODO: convert unwraps and expects to more useful errors
+fn login(client: &Client, username: &str, password: &str) -> Result<LoginResponse> {
+    let mut params = HashMap::new();
+    params.insert("username", username);
+    params.insert("password", password);
+    params.insert("grant_type", "password");
+    params.insert("client_id", "134");
+    params.insert(
+        "client_secret",
+        "1myK12VeCL3dWl9o/ncV2VyUUbOJuNPVJK6bZZJxHvk=",
+    );
+
+    let mut login_request = client
+        .post("https://bandcamp.com/oauth_login")
+        .form(&params)
+        .build()
+        .unwrap();
+
+    let login_request_clone = login_request.try_clone().unwrap();
+    let body_bytes = login_request_clone.body().unwrap().as_bytes().unwrap();
+
+    let hashed_body = crypto::hmac_sha1_from_bytes_as_hex("dtmfa", body_bytes);
+    let x_bandcamp_dm = HeaderValue::from_str(&hashed_body).unwrap();
+
+    login_request
+        .headers_mut()
+        .append("X-Bandcamp-Dm", x_bandcamp_dm);
+
+    let login_response = client
+        .execute(login_request)
+        .expect("Error making call to oauth_login");
+
+    assert_eq!(StatusCode::IM_A_TEAPOT, login_response.status());
+
+    let x_bandcamp_dm_header = login_response.headers().get("X-Bandcamp-Dm").unwrap();
+    let x_bandcamp_dm = x_bandcamp_dm_header.to_str().unwrap();
+    let last_char = x_bandcamp_dm.chars().rev().take(1).collect::<String>();
+    let i = usize::from_str_radix(&last_char, 16).unwrap();
+    let ith_char = x_bandcamp_dm.chars().nth(i).unwrap();
+    let algorithm = usize::from_str_radix(&String::from(ith_char), 16).unwrap();
+    assert_eq!(1, algorithm);
+    // Calculate new x-bandcamp-dm header based on int value
+    // if 3 => hmacsha256 of stuff
+    // if 4 => hmacsha512 of stuff?
+    // otherwise
+    // if 1 => hmac_sha1([0..19] + [22..] + body)
+    // else
+
+    let mut to_hash = String::with_capacity(38);
+    to_hash.push_str(&x_bandcamp_dm[0..19]);
+    to_hash.push_str(&x_bandcamp_dm[22..]);
+
+    let mut login_request = client
+        .post("https://bandcamp.com/oauth_login")
+        .form(&params)
+        .build()
+        .unwrap();
+
+    let body_bytes = login_request
+        .try_clone()
+        .unwrap()
+        .body()
+        .unwrap()
+        .as_bytes()
+        .unwrap()
+        .to_vec();
+    let body_string = String::from_utf8(body_bytes).unwrap();
+    to_hash.push_str(&body_string);
+
+    let hashed_body = crypto::hmac_sha1_as_hex("dtmfa", &to_hash);
+    let x_bandcamp_dm = HeaderValue::from_str(&hashed_body).unwrap();
+
+    login_request
+        .headers_mut()
+        .append("X-Bandcamp-Dm", x_bandcamp_dm);
+
+    let login_response = client
+        .execute(login_request)
+        .expect("Error making call to oauth_login");
+
+    assert_eq!(login_response.status(), StatusCode::OK);
+
+    // If parsing fails, it could be because we received a response like this:
+    // {"error":"emailVerificationRequired","error_description":"Please first re-verify your account using the link we just emailed to you."}
+    // {"error":"nameNoMatch","error_description":"Unknown username or email"}
+    Ok(login_response.json::<LoginResponse>()?)
 }
 
 #[derive(Debug, Deserialize)]
