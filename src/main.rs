@@ -7,6 +7,7 @@ use ratatui::{
     widgets::{Block, Borders, List, Paragraph},
 };
 use rodio::OutputStreamBuilder;
+use rpassword::read_password;
 use rusty_piano::json_l::{read_lines, write_lines};
 use rusty_piano::{
     app::*,
@@ -109,11 +110,11 @@ fn to_file_path(album: &Item, track: &rusty_piano::bandcamp::Track) -> PathBuf {
 
 fn cache_collection() -> Vec<Item> {
     let client = match get_access_token() {
-        Some(token) => BandCampClient::init_with_token(token.clone()).or_else(login),
+        Some(token) => BandCampClient::init_with_token(token.clone()).unwrap_or_else(login),
         None => login(),
-    }
-    .expect("Failed initialization. Bad token or credentials. Or something...");
+    };
 
+    // TODO: add logging that states the collection is being cached
     let items = client.get_entire_collection(5);
 
     let unique_count = items
@@ -138,26 +139,22 @@ fn cache_collection() -> Vec<Item> {
     items
 }
 
-fn login() -> Option<BandCampClient> {
-    fn prompt(param: &str) -> String {
-        println!("Enter your bandcamp {param}:");
+fn login() -> BandCampClient {
+    loop {
+        println!("Bandcamp username:");
         let mut input = String::new();
-        std::io::stdin()
-            .read_line(&mut input)
-            .expect("Error reading standard in");
-        input.trim_end().to_owned()
+        std::io::stdin().read_line(&mut input).unwrap();
+        let username = input.trim_end().to_owned();
+
+        println!("Password:");
+        let password = read_password().unwrap();
+
+        // TODO: reprompt while initialization fails
+        if let Some((client, token)) = BandCampClient::init(&username, &password) {
+            store_access_token(&token);
+            return client;
+        }
     }
-
-    println!("Attempting login...");
-
-    let username = prompt("username");
-    // TODO: hide password during prompt
-    let password = prompt("password");
-
-    BandCampClient::init(&username, &password).map(|tuple| {
-        store_access_token(&tuple.1);
-        tuple.0
-    })
 }
 
 // TODO: this might not feel so bad to move back to an "impl Widget for App" block
