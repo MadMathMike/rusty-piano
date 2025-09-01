@@ -7,7 +7,7 @@ use std::fs::{File, create_dir_all};
 use std::io::{Write, copy};
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::mpsc::{self, Sender};
+use std::sync::mpsc::{self, Sender, TryRecvError};
 use std::thread;
 
 use crate::player::Player;
@@ -71,10 +71,14 @@ impl App {
     }
 
     pub fn handle_next_event(&mut self) -> Result<()> {
-        match self.channel.1.recv()? {
-            Event::Input(key_event) => self.on_key_event(key_event),
-            Event::AlbumDownloadedEvent { title } => self.on_album_downloaded(&title),
-            Event::AlbumDownLoadFailed { title } => self.on_album_download_failed(&title),
+        match self.channel.1.try_recv() {
+            Ok(event) => match event {
+                Event::Input(key_event) => self.on_key_event(key_event),
+                Event::AlbumDownloadedEvent { title } => self.on_album_downloaded(&title),
+                Event::AlbumDownLoadFailed { title } => self.on_album_download_failed(&title),
+            },
+            Err(TryRecvError::Empty) => self.player.play_next_if_track_finished(),
+            Err(_) => self.exit = true,
         }
         Ok(())
     }

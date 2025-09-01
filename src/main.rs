@@ -16,6 +16,7 @@ use rusty_piano::{
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::thread;
+use std::time::Duration;
 
 // TODO: In manual testing in the Konsole, an error downloading a file (e.g., 410 from bandcamp)
 // resulted in the UI getting replaced with an error, the music still playing, and the app stuck
@@ -54,6 +55,8 @@ fn main() -> Result<()> {
         terminal.draw(|frame| draw(frame, &mut app).unwrap())?;
 
         app.handle_next_event()?;
+
+        thread::sleep(Duration::from_millis(16)); // 16 milliseconds should yield about 60 FPS, which is _more_ than enough for this TUI app, I think
     }
 
     // Returns the terminal back to normal mode
