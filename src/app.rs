@@ -2,7 +2,7 @@ use anyhow::{Result, anyhow};
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use ratatui::widgets::ListState;
 use reqwest::StatusCode;
-use rodio::{Decoder, OutputStream, Sink};
+use rodio::OutputStream;
 use std::fs::{File, create_dir_all};
 use std::io::{Write, copy};
 use std::path::PathBuf;
@@ -10,13 +10,15 @@ use std::str::FromStr;
 use std::sync::mpsc::{self, Sender};
 use std::thread;
 
+use crate::player::Player;
+
 pub struct App {
     pub exit: bool,
     // TODO: rename collection to albums (or rename album_list_state to collection_list_state)
     pub collection: Vec<Album>,
     pub album_list_state: ListState,
-    sink: Sink,
     channel: (mpsc::Sender<Event>, mpsc::Receiver<Event>),
+    player: Player,
 }
 
 pub enum DownloadStatus {
@@ -51,15 +53,16 @@ impl App {
         let mut album_list_state = ListState::default();
         album_list_state.select(Some(0));
 
-        let sink = Sink::connect_new(audio_output_stream.mixer());
         let channel = mpsc::channel();
+
+        let player = Player::new(audio_output_stream);
 
         App {
             exit: false,
             collection,
             album_list_state,
-            sink,
             channel,
+            player,
         }
     }
 
@@ -98,21 +101,15 @@ impl App {
                 self.album_list_state.scroll_down_by(1);
             }
             KeyCode::Char('q') => self.exit = true,
-            KeyCode::Char(' ') => {
-                if self.sink.is_paused() {
-                    self.sink.play();
-                } else {
-                    self.sink.pause();
-                }
-            }
+            KeyCode::Char(' ') => self.player.toggle_playback(),
             // 't' for test? As in, play test sound? I guess that's fine if we don't need t for anything else
             KeyCode::Char('t') => {
-                self.sink.clear();
-                let file_path = PathBuf::from_str("./file_example_MP3_2MG.mp3").unwrap();
-                let file = File::open(file_path).expect("Couldn't find file?");
-                let source = Decoder::try_from(file).expect("Error decoding file");
-                self.sink.append(source);
-                self.sink.play();
+                let album = crate::player::Album {
+                    tracks: vec![crate::player::Track {
+                        file_path: PathBuf::from_str("./file_example_MP3_2MG.mp3").unwrap(),
+                    }],
+                };
+                self.player.play(album);
             }
             // KeyCode::Char(_) => ,
             // KeyCode::Null => ,
@@ -127,7 +124,18 @@ impl App {
     fn on_album_selected(&mut self, selected: usize) {
         if let Some(album) = self.collection.get_mut(selected) {
             match album.download_status {
-                DownloadStatus::Downloaded => play_album(&self.sink, album),
+                DownloadStatus::Downloaded => {
+                    let player_album = crate::player::Album {
+                        tracks: album
+                            .tracks
+                            .iter()
+                            .map(|t| crate::player::Track {
+                                file_path: t.file_path.clone(),
+                            })
+                            .collect(),
+                    };
+                    self.player.play(player_album);
+                }
                 DownloadStatus::NotDownloaded => {
                     album.download_status = DownloadStatus::Downloading;
                     let tracks = album.tracks.clone();
@@ -164,9 +172,16 @@ impl App {
 
         album.download_status = DownloadStatus::Downloaded;
 
-        if self.sink.empty() {
-            play_album(&self.sink, album);
-        }
+        let player_album = crate::player::Album {
+            tracks: album
+                .tracks
+                .iter()
+                .map(|t| crate::player::Track {
+                    file_path: t.file_path.clone(),
+                })
+                .collect(),
+        };
+        self.player.play_if_empty(player_album);
     }
 
     fn on_album_download_failed(&mut self, album_title: &str) {
@@ -180,19 +195,6 @@ impl App {
 
         album.download_status = DownloadStatus::DownloadFailed;
     }
-}
-
-fn play_album(sink: &Sink, album: &Album) {
-    sink.clear();
-
-    album.tracks.iter().for_each(|track| {
-        let file =
-            File::open(&track.file_path).expect("Song should have been downloaded already 😬");
-        let source = Decoder::try_from(file).expect("Error decoding file");
-        sink.append(source);
-    });
-
-    sink.play();
 }
 
 fn download_track(path: &PathBuf, download_url: &str) -> Result<()> {
