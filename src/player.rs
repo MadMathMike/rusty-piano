@@ -3,7 +3,8 @@ use std::{fs::File, path::PathBuf};
 
 pub struct Player {
     sink: Sink,
-    album: Option<Album>,
+    // album: Option<Album>,
+    tracks: Vec<Track>,
     currently_playing: Option<usize>,
 }
 
@@ -13,35 +14,22 @@ impl Player {
 
         Self {
             sink,
-            album: None,
+            tracks: vec![],
             currently_playing: None,
         }
     }
 
     pub fn play(&mut self, album: Album) {
         self.sink.clear();
-
-        self.album = Some(album);
-        self.play_track(0);
+        self.tracks = album.tracks;
+        self.play_next_if_track_finished();
     }
 
-    fn play_track(&mut self, track_number: usize) {
-        if self.album.is_none() {
-            panic!("This shouldn't happen... 🤪");
-        }
-        let track = self
-            .album
-            .as_ref()
-            .unwrap()
-            .tracks
-            .get(track_number)
-            .unwrap();
+    fn play_track(&self, track: &Track) {
         let file =
             File::open(&track.file_path).expect("Song should have been downloaded already 😬");
         let source = Decoder::try_from(file).expect("Error decoding file");
         self.sink.append(source);
-
-        self.currently_playing = Some(track_number);
         self.sink.play();
     }
 
@@ -63,18 +51,28 @@ impl Player {
 
     pub fn play_next_if_track_finished(&mut self) {
         if !self.sink.empty() {
+            // We're currently playing something
             return;
         }
 
-        if let Some(album) = self.album.as_ref() {
-            if let Some(_) = album
-                .tracks
-                .iter()
-                .skip(self.currently_playing.unwrap())
-                .next()
-            {
-                self.play_track(self.currently_playing.unwrap() + 1);
+        if self.tracks.is_empty() {
+            // We have nothing loaded
+            return;
+        }
+
+        let next_track_number = match self.currently_playing {
+            Some(track_number) => track_number + 1,
+            None => 1,
+        };
+
+        // track_number is one-based, but the tracks vec is zero-based
+        match self.tracks.get(next_track_number - 1) {
+            Some(track) => {
+                self.currently_playing = Some(next_track_number);
+                self.play_track(track);
             }
+            // TODO: should we unload the album at this point?
+            None => {} // No more tracks to play
         }
     }
 }
