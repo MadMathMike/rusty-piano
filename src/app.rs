@@ -18,7 +18,7 @@ pub struct App {
     pub collection: Vec<Album>,
     pub album_list_state: ListState,
     channel: (mpsc::Sender<Event>, mpsc::Receiver<Event>),
-    player: Player,
+    pub player: Player,
 }
 
 pub enum DownloadStatus {
@@ -36,6 +36,7 @@ pub struct Album {
 
 #[derive(Clone)]
 pub struct Track {
+    pub title: String,
     pub download_url: String,
     pub file_path: PathBuf,
 }
@@ -110,7 +111,9 @@ impl App {
             // 't' for test? As in, play test sound? I guess that's fine if we don't need t for anything else
             KeyCode::Char('t') => {
                 let album = crate::player::Album {
+                    title: "Test file".to_owned(),
                     tracks: vec![crate::player::Track {
+                        title: "file_example_MP3_2MG".to_owned(),
                         file_path: PathBuf::from_str("./file_example_MP3_2MG.mp3").unwrap(),
                     }],
                 };
@@ -130,11 +133,15 @@ impl App {
         if let Some(album) = self.collection.get_mut(selected) {
             match album.download_status {
                 DownloadStatus::Downloaded => {
+                    // TODO: If album is already the same as currently playing, do nothing
+
                     let player_album = crate::player::Album {
+                        title: album.title.clone(),
                         tracks: album
                             .tracks
                             .iter()
                             .map(|t| crate::player::Track {
+                                title: t.title.clone(),
                                 file_path: t.file_path.clone(),
                             })
                             .collect(),
@@ -177,11 +184,14 @@ impl App {
 
         album.download_status = DownloadStatus::Downloaded;
 
+        // TODO: implement From trait on Album so converting from app Album to player Album can be shared
         let player_album = crate::player::Album {
+            title: album.title.clone(),
             tracks: album
                 .tracks
                 .iter()
                 .map(|t| crate::player::Track {
+                    title: t.title.clone(),
                     file_path: t.file_path.clone(),
                 })
                 .collect(),

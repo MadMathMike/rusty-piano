@@ -70,6 +70,7 @@ fn from_bandcamp_item(item: Item) -> Album {
         .tracks
         .iter()
         .map(|track| Track {
+            title: track.title.clone(),
             download_url: track.hq_audio_url.clone(),
             file_path: to_file_path(&item, &track),
         })
@@ -197,9 +198,7 @@ fn draw(frame: &mut Frame, app: &mut App) -> Result<()> {
 
     StatefulWidget::render(list, left, frame.buffer_mut(), &mut app.album_list_state);
 
-    Paragraph::new("Right")
-        .block(Block::new().borders(Borders::ALL))
-        .render(right, frame.buffer_mut());
+    Widget::render(&mut app.player, right, frame.buffer_mut());
 
     Line::from("woah").render(footer, frame.buffer_mut());
 
