@@ -1,5 +1,5 @@
 # Description
-Goal: build a terminal app using Rust that can play collected albums from your ~~Pandora~~ music account.
+A terminal app (built with Rust) that can play collected albums from your ~~Pandora~~ Bandcamp music account.
 
 # Goals
 - [x] Play local mp3 on default media output device
@@ -9,7 +9,7 @@ Goal: build a terminal app using Rust that can play collected albums from your ~
 - [x] Play single song from album
 - [x] Pull down (and cache?) entire collection (must use paging)
 - [x] Play songs from album consecutively
-- [ ] UI: View songs in album
+- [ ] Add download all functionality
 - [x] UI: Download state
   - [x] Show when album is downloaded
   - [x] Show when album is downloading
@@ -21,6 +21,11 @@ Goal: build a terminal app using Rust that can play collected albums from your ~
 - [ ] UI: Show currently playing album
 - [x] UI: Show currently playing song
 - [x] UI: Navigation while album playing
+- [ ] UI: Controls
+- [ ] Update README
+
+# Stretch Goals
+- [ ] Stretch: Preview songs in album before playing
 - [ ] Stretch: Dynamically parse BandCamp responses to error model vs happy-path model
 - [ ] Stretch: Downloading progress bar (for slow connections)
 - [ ] Stretch: Debug logging for trouble shooting?
