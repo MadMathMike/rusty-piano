@@ -8,7 +8,6 @@ pub struct Player {
     header: String,
     tracks: Vec<Track>,
     tracks_state: ListState,
-    currently_playing: Option<usize>,
 }
 
 impl Player {
@@ -20,13 +19,11 @@ impl Player {
             header: "Album".to_owned(),
             tracks: vec![],
             tracks_state: ListState::default(),
-            currently_playing: None,
         }
     }
 
     pub fn play(&mut self, album: Album) {
         self.sink.clear();
-        self.currently_playing = None;
         self.tracks_state = ListState::default();
         self.header = album.title;
         self.tracks = album.tracks;
@@ -68,16 +65,14 @@ impl Player {
             return;
         }
 
-        let next_track_number = match self.currently_playing {
+        let next_track_number = match self.tracks_state.selected() {
             Some(track_number) => track_number + 1,
-            None => 1,
+            None => 0,
         };
 
-        // track_number is one-based, but the tracks vec is zero-based
-        match self.tracks.get(next_track_number - 1) {
+        match self.tracks.get(next_track_number) {
             Some(track) => {
-                self.currently_playing = Some(next_track_number);
-                self.tracks_state.select(Some(next_track_number - 1));
+                self.tracks_state.select_next();
                 self.play_track(track);
             }
             // TODO: should we unload the album at this point?

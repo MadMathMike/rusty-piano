@@ -4,7 +4,7 @@ use ratatui::Frame;
 use ratatui::{
     layout::{Constraint, Direction, Layout},
     prelude::*,
-    widgets::{Block, Borders, List, Paragraph},
+    widgets::{Block, List},
 };
 use rodio::OutputStreamBuilder;
 use rpassword::read_password;
