@@ -97,10 +97,10 @@ impl App {
                 }
             }
             KeyCode::Up => {
-                self.album_list_state.scroll_up_by(1);
+                self.album_list_state.select_previous();
             }
             KeyCode::Down => {
-                self.album_list_state.scroll_down_by(1);
+                self.album_list_state.select_next();
             }
             KeyCode::Left => {
                 self.player.play_previous_track();
