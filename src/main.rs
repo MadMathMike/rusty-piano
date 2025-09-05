@@ -1,11 +1,6 @@
 use anyhow::Result;
 use log::error;
-use ratatui::Frame;
-use ratatui::{
-    layout::{Constraint, Direction, Layout},
-    prelude::*,
-    widgets::{Block, List},
-};
+use ratatui::prelude::*;
 use rodio::OutputStreamBuilder;
 use rpassword::read_password;
 use rusty_piano::json_l::{read_lines, write_lines};
@@ -50,7 +45,7 @@ fn main() -> Result<()> {
     });
 
     while !app.exit {
-        terminal.draw(|frame| draw(frame, &mut app).unwrap())?;
+        terminal.draw(|frame| app.render(frame.area(), frame.buffer_mut()))?;
 
         app.handle_next_event()?;
 
@@ -153,54 +148,4 @@ fn login() -> BandCampClient {
         // TODO: actually print out the errors.
         println!("Something went wrong initializing the client. Try again.");
     }
-}
-
-// TODO: this might not feel so bad to move back to an "impl Widget for App" block
-// if enough logic is pulled out of the app.rs module
-fn draw(frame: &mut Frame, app: &mut App) -> Result<()> {
-    let [header, body, footer] = Layout::default()
-        .direction(Direction::Vertical)
-        .margin(1)
-        .constraints(vec![
-            Constraint::Length(1),
-            Constraint::Fill(1),
-            Constraint::Length(3),
-        ])
-        .areas(frame.area());
-
-    Line::from("rusty piano").render(header, frame.buffer_mut());
-
-    let [left, right] = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints(vec![Constraint::Percentage(50), Constraint::Percentage(50)])
-        .areas(body);
-
-    let album_titles = app
-        .collection
-        .iter()
-        .map(|album| {
-            let icon = match album.download_status {
-                DownloadStatus::NotDownloaded => '💾',
-                DownloadStatus::Downloading => '⏳',
-                DownloadStatus::Downloaded => '✅',
-                DownloadStatus::DownloadFailed => '🚨',
-            };
-            format!("{} {icon}", album.title.clone())
-        })
-        .collect::<Vec<String>>();
-
-    let list = List::new(album_titles)
-        .block(Block::bordered().title("Albums"))
-        .highlight_symbol(">");
-
-    StatefulWidget::render(list, left, frame.buffer_mut(), &mut app.album_list_state);
-
-    Widget::render(&mut app.player, right, frame.buffer_mut());
-
-    Line::from(
-        "'↑/↓' select album | 'enter' play album | 'spacebar' play/pause | '←/→' previous/next track | 'q' quit",
-    )
-    .render(footer, frame.buffer_mut());
-
-    Ok(())
 }

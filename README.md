@@ -24,6 +24,7 @@ A terminal app (built with Rust) that can play collected albums from your ~~Pand
 - [x] UI: Controls
 - [x] UI: Inlude artist in album list
 - [ ] Update README
+- [ ] Code docs
 
 # Stretch Goals
 - [ ] Sort albums

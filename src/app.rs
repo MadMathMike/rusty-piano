@@ -1,6 +1,8 @@
 use anyhow::{Result, anyhow};
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
-use ratatui::widgets::ListState;
+use ratatui::layout::{Constraint, Direction, Layout};
+use ratatui::text::Line;
+use ratatui::widgets::{Block, List, ListState, StatefulWidget, Widget};
 use reqwest::StatusCode;
 use rodio::OutputStream;
 use std::fs::{File, create_dir_all};
@@ -229,5 +231,56 @@ fn download_track(path: &PathBuf, download_url: &str) -> Result<()> {
             "Download status code: {}",
             download_response.status()
         )),
+    }
+}
+
+impl Widget for &mut App {
+    fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer)
+    where
+        Self: Sized,
+    {
+        let [header, body, footer] = Layout::default()
+            .direction(Direction::Vertical)
+            .margin(1)
+            .constraints(vec![
+                Constraint::Length(1),
+                Constraint::Fill(1),
+                Constraint::Length(3),
+            ])
+            .areas(area);
+
+        Line::from("rusty piano").render(header, buf);
+
+        let [left, right] = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(vec![Constraint::Percentage(50), Constraint::Percentage(50)])
+            .areas(body);
+
+        let album_titles = self
+            .collection
+            .iter()
+            .map(|album| {
+                let icon = match album.download_status {
+                    DownloadStatus::NotDownloaded => '💾',
+                    DownloadStatus::Downloading => '⏳',
+                    DownloadStatus::Downloaded => '✅',
+                    DownloadStatus::DownloadFailed => '🚨',
+                };
+                format!("{} {icon}", album.title.clone())
+            })
+            .collect::<Vec<String>>();
+
+        let list = List::new(album_titles)
+            .block(Block::bordered().title("Albums"))
+            .highlight_symbol(">");
+
+        StatefulWidget::render(list, left, buf, &mut self.album_list_state);
+
+        Widget::render(&mut self.player, right, buf);
+
+        Line::from(
+            "'↑/↓' select album | 'enter' play album | 'spacebar' play/pause | '←/→' previous/next track | 'q' quit",
+        )
+        .render(footer, buf);
     }
 }
