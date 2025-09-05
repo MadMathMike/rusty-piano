@@ -22,7 +22,7 @@ impl Player {
     }
 
     pub fn play(&mut self, album: Album) {
-        self.sink.clear();
+        self.sink.stop();
         self.tracks_state = ListState::default();
         self.header = album.title;
         self.tracks = album.tracks;
@@ -99,7 +99,7 @@ impl Player {
 
     fn play_track_number(&mut self, track_number: usize) {
         if let Some(track) = self.tracks.get(track_number) {
-            self.sink.clear();
+            self.sink.stop();
             self.tracks_state.select(Some(track_number));
             self.play_track(track);
         }
