@@ -95,16 +95,17 @@ impl App {
                     self.on_album_selected(selected);
                 }
             }
-            // TODO: vim keybindings might suggest the 'j' and 'k' keys should be used
-            // for down and up respectively
-            // YouTube uses 'j' for back-ten-seconds, 'k' for play/pause, and 'l' for skip-ten-seconds
-            // Should I do something similar, except maybe use j/l for back/skip-one-track?
-            // Does this suggest two different input modes, one for album/track navigation, and one for playback control?
             KeyCode::Up => {
                 self.album_list_state.scroll_up_by(1);
             }
             KeyCode::Down => {
                 self.album_list_state.scroll_down_by(1);
+            }
+            KeyCode::Left => {
+                self.player.play_previous_track();
+            }
+            KeyCode::Right => {
+                self.player.play_next_track();
             }
             KeyCode::Char('q') => self.exit = true,
             KeyCode::Char(' ') => self.player.toggle_playback(),
@@ -119,12 +120,6 @@ impl App {
                 };
                 self.player.play(album);
             }
-            // KeyCode::Char(_) => ,
-            // KeyCode::Null => ,
-            // KeyCode::Esc => ,
-            // KeyCode::Pause => ,
-            // KeyCode::Media(media_key_code) => ,
-            // KeyCode::Modifier(modifier_key_code) => ,
             _ => (),
         }
     }

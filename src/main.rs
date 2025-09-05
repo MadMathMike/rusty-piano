@@ -171,11 +171,11 @@ fn draw(frame: &mut Frame, app: &mut App) -> Result<()> {
         ])
         .areas(frame.area());
 
-    Line::from("hello world").render(header, frame.buffer_mut());
+    Line::from("rusty piano").render(header, frame.buffer_mut());
 
     let [left, right] = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints(vec![Constraint::Percentage(40), Constraint::Percentage(60)])
+        .constraints(vec![Constraint::Percentage(50), Constraint::Percentage(50)])
         .areas(body);
 
     let album_titles = app
@@ -200,7 +200,10 @@ fn draw(frame: &mut Frame, app: &mut App) -> Result<()> {
 
     Widget::render(&mut app.player, right, frame.buffer_mut());
 
-    Line::from("woah").render(footer, frame.buffer_mut());
+    Line::from(
+        "<↑/↓> select album | <enter> play album | < > play/pause | <←/→> previous/next track | <q> quit",
+    )
+    .render(footer, frame.buffer_mut());
 
     Ok(())
 }

@@ -1,6 +1,6 @@
 use ratatui::widgets::{Block, List, ListState, StatefulWidget, Widget};
 use rodio::{Decoder, OutputStream, Sink};
-use std::{fs::File, path::PathBuf};
+use std::{fs::File, path::PathBuf, usize};
 
 pub struct Player {
     sink: Sink,
@@ -27,6 +27,7 @@ impl Player {
         self.tracks_state = ListState::default();
         self.header = album.title;
         self.tracks = album.tracks;
+        // TODO: use play_track_number
         self.play_next_if_track_finished();
     }
 
@@ -54,6 +55,39 @@ impl Player {
         }
     }
 
+    pub fn play_previous_track(&mut self) {
+        if self.tracks.is_empty() {
+            // We have nothing loaded
+            return;
+        }
+
+        let previous_track_number = match self.tracks_state.selected() {
+            Some(track_number) => match track_number {
+                1.. => Some(track_number - 1),
+                0 => Some(0),
+            },
+            None => Some(0),
+        };
+
+        if previous_track_number.is_some() {
+            self.play_track_number(previous_track_number.unwrap());
+        }
+    }
+
+    pub fn play_next_track(&mut self) {
+        if self.tracks.is_empty() {
+            // We have nothing loaded
+            return;
+        }
+
+        let next_track_number = match self.tracks_state.selected() {
+            Some(track_number) => track_number + 1,
+            None => 0,
+        };
+
+        self.play_track_number(next_track_number);
+    }
+
     pub fn play_next_if_track_finished(&mut self) {
         if !self.sink.empty() {
             // We're currently playing something
@@ -70,9 +104,22 @@ impl Player {
             None => 0,
         };
 
+        // TODO: use play_track_number
         match self.tracks.get(next_track_number) {
             Some(track) => {
                 self.tracks_state.select_next();
+                self.play_track(track);
+            }
+            // TODO: should we unload the album at this point?
+            None => {} // No more tracks to play
+        }
+    }
+
+    fn play_track_number(&mut self, track_number: usize) {
+        match self.tracks.get(track_number) {
+            Some(track) => {
+                self.sink.clear();
+                self.tracks_state.select(Some(track_number));
                 self.play_track(track);
             }
             // TODO: should we unload the album at this point?
@@ -99,8 +146,7 @@ impl Widget for &mut Player {
         let track_titles = (0..self.tracks.len())
             .map(|index| {
                 let track = &self.tracks[index];
-                let icon = ' ';
-                format!("{} {icon}", track.title)
+                format!("{index:02} - {}", track.title)
             })
             .collect::<Vec<String>>();
 
