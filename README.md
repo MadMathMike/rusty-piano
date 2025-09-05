@@ -22,10 +22,11 @@ A terminal app (built with Rust) that can play collected albums from your ~~Pand
 - [x] UI: Show currently playing song
 - [x] UI: Navigation while album playing
 - [x] UI: Controls
-- [ ] UI: Inlude artist in album list
+- [x] UI: Inlude artist in album list
 - [ ] Update README
 
 # Stretch Goals
+- [ ] Sort albums
 - [ ] Song progress
 - [ ] View albums by artist
 - [ ] Preview songs in album before playing

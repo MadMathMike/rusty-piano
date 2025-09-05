@@ -49,8 +49,6 @@ fn main() -> Result<()> {
         }
     });
 
-    // TODO: listen for window resize events?
-
     while !app.exit {
         terminal.draw(|frame| draw(frame, &mut app).unwrap())?;
 
@@ -84,13 +82,12 @@ fn from_bandcamp_item(item: Item) -> Album {
     };
 
     Album {
-        title: item.title,
+        title: format!("{} by {}", item.title, item.band_info.name),
         tracks,
         download_status,
     }
 }
 
-// TODO: change return type to Path instead of PathBuf
 fn to_file_path(album: &Item, track: &rusty_piano::bandcamp::Track) -> PathBuf {
     // This is incomplete, but works for now as it address the one album in my library with a problem:
     // The album "tempor / jester" by A Unicorn Masquerade resulted in a jester subdirectory
