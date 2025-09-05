@@ -13,7 +13,6 @@ pub struct BandCampClient {
     access_token: String,
 }
 
-#[allow(clippy::new_without_default)]
 impl BandCampClient {
     pub fn new(username: &str, password: &str) -> Result<Self> {
         let mut default_headers = HeaderMap::default();

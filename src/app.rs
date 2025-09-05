@@ -79,7 +79,7 @@ impl App {
                 Event::AlbumDownLoadFailed { title } => self.on_album_download_failed(&title),
             },
             // TODO: consider letting the player have its own thread that tries to play the next track when appropriate
-            Err(TryRecvError::Empty) => self.player.play_next_if_track_finished(),
+            Err(TryRecvError::Empty) => self.player.try_play_next_track(),
             Err(_) => self.exit = true,
         }
         Ok(())

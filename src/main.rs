@@ -201,7 +201,7 @@ fn draw(frame: &mut Frame, app: &mut App) -> Result<()> {
     Widget::render(&mut app.player, right, frame.buffer_mut());
 
     Line::from(
-        "<↑/↓> select album | <enter> play album | < > play/pause | <←/→> previous/next track | <q> quit",
+        "'↑/↓' select album | 'enter' play album | 'spacebar' play/pause | '←/→' previous/next track | 'q' quit",
     )
     .render(footer, frame.buffer_mut());
 

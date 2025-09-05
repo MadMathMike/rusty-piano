@@ -4,7 +4,6 @@ use std::{fs::File, path::PathBuf, usize};
 
 pub struct Player {
     sink: Sink,
-    // album: Option<Album>,
     header: String,
     tracks: Vec<Track>,
     tracks_state: ListState,
@@ -16,7 +15,7 @@ impl Player {
 
         Self {
             sink,
-            header: "Album".to_owned(),
+            header: "".to_owned(),
             tracks: vec![],
             tracks_state: ListState::default(),
         }
@@ -27,8 +26,7 @@ impl Player {
         self.tracks_state = ListState::default();
         self.header = album.title;
         self.tracks = album.tracks;
-        // TODO: use play_track_number
-        self.play_next_if_track_finished();
+        self.play_track_number(0);
     }
 
     fn play_track(&self, track: &Track) {
@@ -88,42 +86,22 @@ impl Player {
         self.play_track_number(next_track_number);
     }
 
-    pub fn play_next_if_track_finished(&mut self) {
+    // Only plays next track if a track is not currently "loaded".
+    // i.e., Will not got to the next track even if a song is paused
+    pub fn try_play_next_track(&mut self) {
         if !self.sink.empty() {
             // We're currently playing something
             return;
         }
 
-        if self.tracks.is_empty() {
-            // We have nothing loaded
-            return;
-        }
-
-        let next_track_number = match self.tracks_state.selected() {
-            Some(track_number) => track_number + 1,
-            None => 0,
-        };
-
-        // TODO: use play_track_number
-        match self.tracks.get(next_track_number) {
-            Some(track) => {
-                self.tracks_state.select_next();
-                self.play_track(track);
-            }
-            // TODO: should we unload the album at this point?
-            None => {} // No more tracks to play
-        }
+        self.play_next_track();
     }
 
     fn play_track_number(&mut self, track_number: usize) {
-        match self.tracks.get(track_number) {
-            Some(track) => {
-                self.sink.clear();
-                self.tracks_state.select(Some(track_number));
-                self.play_track(track);
-            }
-            // TODO: should we unload the album at this point?
-            None => {} // No more tracks to play
+        if let Some(track) = self.tracks.get(track_number) {
+            self.sink.clear();
+            self.tracks_state.select(Some(track_number));
+            self.play_track(track);
         }
     }
 }

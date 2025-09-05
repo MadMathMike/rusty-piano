@@ -22,13 +22,15 @@ A terminal app (built with Rust) that can play collected albums from your ~~Pand
 - [x] UI: Show currently playing song
 - [x] UI: Navigation while album playing
 - [x] UI: Controls
+- [ ] UI: Inlude artist in album list
 - [ ] Update README
 
 # Stretch Goals
-- [ ] Re-auth flow
+- [ ] Song progress
 - [ ] View albums by artist
-- [ ] Search
 - [ ] Preview songs in album before playing
+- [ ] Search
+- [ ] Re-auth flow
 - [ ] Dynamically parse BandCamp responses to error model vs happy-path model
 - [ ] Downloading progress bar (for slow connections)
 - [ ] Debug logging for trouble shooting?
