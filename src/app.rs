@@ -16,11 +16,10 @@ use crate::player::Player;
 
 pub struct App {
     pub exit: bool,
-    // TODO: rename collection to albums (or rename album_list_state to collection_list_state)
-    pub collection: Vec<Album>,
-    pub album_list_state: ListState,
+    collection: Vec<Album>,
+    album_list_state: ListState,
     channel: (mpsc::Sender<Event>, mpsc::Receiver<Event>),
-    pub player: Player,
+    player: Player,
 }
 
 pub enum DownloadStatus {
@@ -129,22 +128,7 @@ impl App {
     fn on_album_selected(&mut self, selected: usize) {
         if let Some(album) = self.collection.get_mut(selected) {
             match album.download_status {
-                DownloadStatus::Downloaded => {
-                    // TODO: If album is already the same as currently playing, do nothing
-
-                    let player_album = crate::player::Album {
-                        title: album.title.clone(),
-                        tracks: album
-                            .tracks
-                            .iter()
-                            .map(|t| crate::player::Track {
-                                title: t.title.clone(),
-                                file_path: t.file_path.clone(),
-                            })
-                            .collect(),
-                    };
-                    self.player.play(player_album);
-                }
+                DownloadStatus::Downloaded => self.player.play(album.into()),
                 DownloadStatus::NotDownloaded => {
                     album.download_status = DownloadStatus::Downloading;
                     let tracks = album.tracks.clone();
@@ -165,6 +149,7 @@ impl App {
                     });
                 }
                 DownloadStatus::Downloading => {}
+                // TODO
                 DownloadStatus::DownloadFailed => { /* Prompt to rebuild collection */ }
             }
         }
@@ -181,19 +166,7 @@ impl App {
 
         album.download_status = DownloadStatus::Downloaded;
 
-        // TODO: implement From trait on Album so converting from app Album to player Album can be shared
-        let player_album = crate::player::Album {
-            title: album.title.clone(),
-            tracks: album
-                .tracks
-                .iter()
-                .map(|t| crate::player::Track {
-                    title: t.title.clone(),
-                    file_path: t.file_path.clone(),
-                })
-                .collect(),
-        };
-        self.player.play_if_empty(player_album);
+        self.player.play_if_empty(album.into());
     }
 
     fn on_album_download_failed(&mut self, album_title: &str) {
@@ -231,6 +204,22 @@ fn download_track(path: &PathBuf, download_url: &str) -> Result<()> {
             "Download status code: {}",
             download_response.status()
         )),
+    }
+}
+
+impl From<&mut Album> for crate::player::Album {
+    fn from(value: &mut Album) -> Self {
+        crate::player::Album {
+            title: value.title.clone(),
+            tracks: value
+                .tracks
+                .iter()
+                .map(|t| crate::player::Track {
+                    title: t.title.clone(),
+                    file_path: t.file_path.clone(),
+                })
+                .collect(),
+        }
     }
 }
 
