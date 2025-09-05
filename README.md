@@ -10,6 +10,7 @@ A terminal app (built with Rust) that can play collected albums from your ~~Pand
 - [x] Pull down (and cache?) entire collection (must use paging)
 - [x] Play songs from album consecutively
 - [ ] Add download all functionality
+- [ ] Support configurable download location
 - [x] UI: Download state
   - [x] Show when album is downloaded
   - [x] Show when album is downloading

@@ -141,11 +141,9 @@ fn login() -> BandCampClient {
         println!("Password:");
         let password = read_password().unwrap();
 
-        if let Ok(client) = BandCampClient::new(&username, &password) {
-            return client;
+        match BandCampClient::new(&username, &password) {
+            Ok(client) => return client,
+            Err(err) => println!("{err}"),
         }
-
-        // TODO: actually print out the errors.
-        println!("Something went wrong initializing the client. Try again.");
     }
 }

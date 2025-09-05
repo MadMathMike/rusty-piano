@@ -5,7 +5,8 @@ use reqwest::{
     header::{HeaderMap, HeaderValue, USER_AGENT},
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Display};
+use thiserror::Error;
 
 pub struct BandCampClient {
     client: Client,
@@ -13,7 +14,7 @@ pub struct BandCampClient {
 }
 
 impl BandCampClient {
-    pub fn new(username: &str, password: &str) -> Result<Self> {
+    pub fn new(username: &str, password: &str) -> Result<Self, LoginError> {
         let mut default_headers = HeaderMap::default();
         // TODO: user agent can/should be an input parameter so it can be shared across other clients?
         default_headers.append(USER_AGENT, HeaderValue::from_static("rusty-piano/0.1"));
@@ -85,7 +86,7 @@ impl BandCampClient {
 // https://github.com/Metalnem/bandcamp-downloader
 // https://mijailovic.net/2024/04/04/bandcamp-auth/
 // TODO: convert unwraps and expects to more useful errors
-fn login(client: &Client, username: &str, password: &str) -> Result<LoginResponse> {
+fn login(client: &Client, username: &str, password: &str) -> Result<LoginResponse, LoginError> {
     let mut params = HashMap::new();
     params.insert("username", username);
     params.insert("password", password);
@@ -166,10 +167,28 @@ fn login(client: &Client, username: &str, password: &str) -> Result<LoginRespons
 
     assert_eq!(login_response.status(), StatusCode::OK);
 
-    // If parsing fails, it could be because we received a response like this:
-    // {"error":"emailVerificationRequired","error_description":"Please first re-verify your account using the link we just emailed to you."}
-    // {"error":"nameNoMatch","error_description":"Unknown username or email"}
-    Ok(login_response.json::<LoginResponse>()?)
+    let response_body = login_response.text().unwrap();
+
+    if response_body.contains("error") {
+        // Examples:
+        // {"error":"emailVerificationRequired","error_description":"Please first re-verify your account using the link we just emailed to you."}
+        // {"error":"nameNoMatch","error_description":"Unknown username or email"}
+        Err(serde_json::from_str::<LoginError>(&response_body).unwrap())
+    } else {
+        Ok(serde_json::from_str::<LoginResponse>(&response_body).unwrap())
+    }
+}
+
+#[derive(Debug, Deserialize, Error)]
+pub struct LoginError {
+    pub error: String,
+    pub error_description: String,
+}
+
+impl Display for LoginError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} - {}", self.error, self.error_description)
+    }
 }
 
 #[derive(Debug, Deserialize)]
