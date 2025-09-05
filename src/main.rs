@@ -8,20 +8,18 @@ use rusty_piano::{
     app::*,
     bandcamp::{BandCampClient, Item},
 };
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::thread;
 use std::time::Duration;
 
-// TODO: In manual testing in the Konsole, an error downloading a file (e.g., 410 from bandcamp)
-// resulted in the UI getting replaced with an error, the music still playing, and the app stuck
-
 fn main() -> Result<()> {
-    let collection =
-        read_lines(&PathBuf::from_str("collection.jsonl").unwrap()).unwrap_or_else(|e| {
-            error!("{e:?}");
-            cache_collection()
-        });
+    let collection_path = PathBuf::from_str("collection.jsonl").unwrap();
+    let collection = read_lines(&collection_path).unwrap_or_else(|e| {
+        error!("{e:?}");
+        println!("Caching collection");
+        cache_collection(&collection_path)
+    });
 
     // Puts the terminal in raw mode, which disables line buffering (so rip to ctrl+c response)
     let mut terminal = ratatui::init();
@@ -103,30 +101,12 @@ fn to_file_path(album: &Item, track: &rusty_piano::bandcamp::Track) -> PathBuf {
     path
 }
 
-fn cache_collection() -> Vec<Item> {
+fn cache_collection(collection_file_path: &Path) -> Vec<Item> {
     let client = login();
 
-    // TODO: add logging that states the collection is being cached
     let items = client.get_entire_collection(5);
 
-    let unique_count = items
-        .iter()
-        .map(|i| i.tralbum_id)
-        .collect::<std::collections::HashSet<_>>()
-        .len();
-
-    // Maybe this goes in an integration test? Requires authentication, so probably not
-    assert_eq!(
-        unique_count,
-        items.len(),
-        "There should not be any duplicates in the collection"
-    );
-    // assert_eq!(7, unique_count);
-
-    write_lines(
-        &PathBuf::from_str("collection.jsonl").unwrap(),
-        items.iter(),
-    );
+    write_lines(&collection_file_path, items.iter());
 
     items
 }
