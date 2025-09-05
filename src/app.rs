@@ -1,6 +1,6 @@
 use anyhow::{Result, anyhow};
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
-use ratatui::layout::{Constraint, Direction, Layout};
+use ratatui::layout::{Alignment, Constraint, Direction, Layout};
 use ratatui::text::Line;
 use ratatui::widgets::{Block, List, ListState, StatefulWidget, Widget};
 use reqwest::StatusCode;
@@ -238,7 +238,9 @@ impl Widget for &mut App {
             ])
             .areas(area);
 
-        Line::from("rusty piano").render(header, buf);
+        Line::from("rusty piano")
+            .alignment(Alignment::Center)
+            .render(header, buf);
 
         let [left, right] = Layout::default()
             .direction(Direction::Horizontal)
@@ -270,6 +272,7 @@ impl Widget for &mut App {
         Line::from(
             "'↑/↓' select album | 'enter' play album | 'spacebar' play/pause | '←/→' previous/next track | 'q' quit",
         )
+        .alignment(Alignment::Center)
         .render(footer, buf);
     }
 }
