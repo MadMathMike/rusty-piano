@@ -29,14 +29,6 @@ impl Player {
         self.play_track_number(0);
     }
 
-    fn play_track(&self, track: &Track) {
-        let file =
-            File::open(&track.file_path).expect("Song should have been downloaded already 😬");
-        let source = Decoder::try_from(file).expect("Error decoding file");
-        self.sink.append(source);
-        self.sink.play();
-    }
-
     pub fn play_if_empty(&mut self, album: Album) {
         if self.sink.empty() {
             return;
@@ -55,7 +47,6 @@ impl Player {
 
     pub fn play_previous_track(&mut self) {
         if self.tracks.is_empty() {
-            // We have nothing loaded
             return;
         }
 
@@ -74,7 +65,6 @@ impl Player {
 
     pub fn play_next_track(&mut self) {
         if self.tracks.is_empty() {
-            // We have nothing loaded
             return;
         }
 
@@ -100,8 +90,12 @@ impl Player {
     fn play_track_number(&mut self, track_number: usize) {
         if let Some(track) = self.tracks.get(track_number) {
             self.sink.stop();
+            let file = File::open(&track.file_path).unwrap();
+            let source = Decoder::try_from(file).unwrap();
+            self.sink.append(source);
+            self.sink.play();
+
             self.tracks_state.select(Some(track_number));
-            self.play_track(track);
         }
     }
 }
