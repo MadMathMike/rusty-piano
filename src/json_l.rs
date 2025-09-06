@@ -6,24 +6,25 @@ use std::{
     io::{BufRead, BufReader},
 };
 
-pub fn read_lines_from_file<T: DeserializeOwned>(file: File) -> Vec<T> {
-    BufReader::new(file)
-        .lines()
-        .map_while(Result::ok)
-        .map(|line| serde_json::from_str::<T>(&line))
-        .map_while(Result::ok)
-        .collect()
+pub fn read_lines_from_file<T: DeserializeOwned>(file: File) -> Result<Vec<T>> {
+    let mut items = Vec::new();
+    for line in BufReader::new(file).lines() {
+        items.push(serde_json::from_str::<T>(&line?)?);
+    }
+
+    Ok(items)
 }
 
 pub fn write_lines_to_file<'a, T: Serialize + 'a>(
     mut file: File,
-    items: impl Iterator<Item = &'a T>,
-) {
-    items
-        .map(serde_json::to_string)
-        .map_while(Result::ok)
-        .map(|item| format!("{}\n", item))
-        .for_each(|line| file.write_all(line.as_bytes()).unwrap());
+    mut items: impl Iterator<Item = &'a T>,
+) -> Result<()> {
+    items.try_for_each(|item| {
+        let serialized_item = serde_json::to_string(item)?;
+        let line = format!("{}\n", serialized_item);
+        file.write_all(line.as_bytes())
+    })?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -53,9 +54,9 @@ mod tests {
             },
         ];
 
-        write_lines_to_file(File::create(&file_path).unwrap(), items.iter());
+        write_lines_to_file(File::create(&file_path).unwrap(), items.iter()).unwrap();
 
-        let items_from_file = read_lines_from_file(File::open(&file_path).unwrap());
+        let items_from_file = read_lines_from_file(File::open(&file_path).unwrap()).unwrap();
 
         assert_eq!(items, items_from_file);
     }

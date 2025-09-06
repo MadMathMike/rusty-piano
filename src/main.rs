@@ -14,7 +14,7 @@ fn main() -> Result<()> {
     let collection_path = PathBuf::from_str("collection.jsonl")?;
 
     let collection = match File::open(&collection_path) {
-        Ok(file) => read_lines_from_file(file),
+        Ok(file) => read_lines_from_file(file)?,
         Err(_) => login_and_cache_collection(&collection_path, 5)?,
     };
 
@@ -77,7 +77,7 @@ fn login_and_cache_collection(collection_path: &Path, page_size: usize) -> Resul
     println!("Done!");
 
     let file = File::create(&collection_path)?;
-    write_lines_to_file(file, items.iter());
+    write_lines_to_file(file, items.iter())?;
 
     Ok(items)
 }
