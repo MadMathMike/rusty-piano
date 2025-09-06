@@ -18,7 +18,7 @@ impl Player {
         Self {
             sink,
             header: "".to_owned(),
-            tracks: vec![],
+            tracks: Vec::new(),
             tracks_state: ListState::default(),
         }
     }
@@ -52,18 +52,13 @@ impl Player {
             return Ok(());
         }
 
-        let previous_track_number = match self.tracks_state.selected() {
-            Some(track_number) => match track_number {
-                1.. => Some(track_number - 1),
-                0 => Some(0),
-            },
-            None => Some(0),
-        };
+        let track_index = self
+            .tracks_state
+            .selected()
+            .filter(|i| *i > 0)
+            .map_or(0, |i| i - 1);
 
-        match previous_track_number.is_some() {
-            true => self.play_track(previous_track_number.unwrap()),
-            false => Ok(()),
-        }
+        self.play_track(track_index)
     }
 
     pub fn play_next_track(&mut self) -> Result<()> {
@@ -71,12 +66,9 @@ impl Player {
             return Ok(());
         }
 
-        let next_track_number = match self.tracks_state.selected() {
-            Some(track_number) => track_number + 1,
-            None => 0,
-        };
+        let track_index = self.tracks_state.selected().map_or(0, |i| i + 1);
 
-        self.play_track(next_track_number)
+        self.play_track(track_index)
     }
 
     // Plays the next track iff a track is not currently loaded
