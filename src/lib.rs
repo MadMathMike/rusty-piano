@@ -11,6 +11,7 @@ impl From<bandcamp::Item> for app::Album {
             .tracks
             .iter()
             .map(|track| app::Track {
+                number: track.track_number,
                 title: track.title.clone(),
                 download_url: track.hq_audio_url.clone(),
                 file_path: to_file_path(&value, &track),

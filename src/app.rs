@@ -70,6 +70,7 @@ impl Album {
 
 #[derive(Clone)]
 pub struct Track {
+    pub number: u8,
     pub title: String,
     pub download_url: String,
     pub file_path: PathBuf,
@@ -148,6 +149,7 @@ impl App {
                 let album = crate::player::Album {
                     title: "Test file".to_owned(),
                     tracks: vec![crate::player::Track {
+                        number: 1,
                         title: "file_example_MP3_2MG".to_owned(),
                         file_path: PathBuf::from_str("./file_example_MP3_2MG.mp3")?,
                     }],
@@ -236,6 +238,7 @@ impl From<&mut Album> for crate::player::Album {
                 .tracks
                 .iter()
                 .map(|t| crate::player::Track {
+                    number: t.number,
                     title: t.title.clone(),
                     file_path: t.file_path.clone(),
                 })

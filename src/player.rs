@@ -1,4 +1,5 @@
 use anyhow::Result;
+use ratatui::prelude::*;
 use ratatui::widgets::{Block, List, ListState, StatefulWidget, Widget};
 use rodio::{Decoder, OutputStream, Sink};
 use std::{fs::File, path::PathBuf, usize};
@@ -27,7 +28,7 @@ impl Player {
         self.tracks_state = ListState::default();
         self.header = album.title;
         self.tracks = album.tracks;
-        self.play_track_number(0)?;
+        self.play_track(0)?;
 
         Ok(())
     }
@@ -60,7 +61,7 @@ impl Player {
         };
 
         match previous_track_number.is_some() {
-            true => self.play_track_number(previous_track_number.unwrap()),
+            true => self.play_track(previous_track_number.unwrap()),
             false => Ok(()),
         }
     }
@@ -75,7 +76,7 @@ impl Player {
             None => 0,
         };
 
-        self.play_track_number(next_track_number)
+        self.play_track(next_track_number)
     }
 
     // Plays the next track iff a track is not currently loaded
@@ -87,15 +88,15 @@ impl Player {
         }
     }
 
-    fn play_track_number(&mut self, track_number: usize) -> Result<()> {
-        if let Some(track) = self.tracks.get(track_number) {
+    fn play_track(&mut self, track_index: usize) -> Result<()> {
+        if let Some(track) = self.tracks.get(track_index) {
             self.sink.stop();
             let file = File::open(&track.file_path)?;
             let source = Decoder::try_from(file)?;
             self.sink.append(source);
             self.sink.play();
 
-            self.tracks_state.select(Some(track_number));
+            self.tracks_state.select(Some(track_index));
         }
 
         Ok(())
@@ -108,22 +109,21 @@ pub struct Album {
 }
 
 pub struct Track {
+    pub number: u8,
     pub title: String,
     pub file_path: PathBuf,
 }
 
 impl Widget for &mut Player {
-    fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer)
+    fn render(self, area: Rect, buf: &mut Buffer)
     where
         Self: Sized,
     {
-        // TODO: change this to enumerate
-        let track_titles = (0..self.tracks.len())
-            .map(|index| {
-                let track = &self.tracks[index];
-                format!("{index:02} - {}", track.title)
-            })
-            .collect::<Vec<String>>();
+        let track_titles: Vec<String> = self
+            .tracks
+            .iter()
+            .map(|track| format!("{:02} - {}", track.number, track.title))
+            .collect();
 
         let list = List::new(track_titles)
             .highlight_symbol("▶️")
