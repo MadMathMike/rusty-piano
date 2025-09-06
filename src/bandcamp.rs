@@ -1,7 +1,7 @@
 use anyhow::Result;
 use reqwest::{
     StatusCode,
-    blocking::Client,
+    blocking::{Body, Client},
     header::{HeaderMap, HeaderValue, USER_AGENT},
 };
 use serde::{Deserialize, Serialize};
@@ -129,12 +129,9 @@ fn login(client: &Client, username: &str, password: &str) -> Result<LoginRespons
 
     let body_bytes = login_request
         .try_clone()
-        .unwrap()
-        .body()
-        .unwrap()
-        .as_bytes()
-        .unwrap()
-        .to_vec();
+        .and_then(|req| req.body().and_then(Body::as_bytes).map(<[u8]>::to_vec))
+        .unwrap();
+
     let body_string = String::from_utf8(body_bytes)?;
     to_hash.push_str(&body_string);
 
