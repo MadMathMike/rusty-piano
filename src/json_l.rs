@@ -1,33 +1,29 @@
 use anyhow::Result;
 use serde::{Serialize, de::DeserializeOwned};
 use std::io::Write;
-use std::path::Path;
 use std::{
     fs::File,
     io::{BufRead, BufReader},
 };
 
-// TODO: it feels like this JSON L stuff should live with other collection management in a
-// collection module that maybe handles downloading?
-pub fn read_lines<T: DeserializeOwned>(file_path: &Path) -> Result<Vec<T>> {
-    let file = File::open(file_path)?;
-    let collection: Vec<T> = BufReader::new(file)
+pub fn read_lines_from_file<T: DeserializeOwned>(file: File) -> Vec<T> {
+    BufReader::new(file)
         .lines()
         .map_while(Result::ok)
-        .map(|line| serde_json::from_str::<T>(&line).unwrap())
-        .collect();
-
-    Ok(collection)
+        .map(|line| serde_json::from_str::<T>(&line))
+        .map_while(Result::ok)
+        .collect()
 }
 
-pub fn write_lines<'a, T: Serialize + 'a>(file_path: &Path, items: impl Iterator<Item = &'a T>) {
-    let mut file = File::create(file_path).expect("Error creating file handle");
+pub fn write_lines_to_file<'a, T: Serialize + 'a>(
+    mut file: File,
+    items: impl Iterator<Item = &'a T>,
+) {
     items
-        .map(|item| serde_json::to_string(item).unwrap())
-        .for_each(|item| {
-            file.write_all(format!("{item}\n").as_bytes())
-                .expect("Error writing to file")
-        });
+        .map(serde_json::to_string)
+        .map_while(Result::ok)
+        .map(|item| format!("{}\n", item))
+        .for_each(|line| file.write_all(line.as_bytes()).unwrap());
 }
 
 #[cfg(test)]
@@ -57,9 +53,9 @@ mod tests {
             },
         ];
 
-        write_lines(&file_path, items.iter());
+        write_lines_to_file(File::create(&file_path).unwrap(), items.iter());
 
-        let items_from_file: Vec<TestStruct> = read_lines(&file_path).expect("read_lines failed");
+        let items_from_file = read_lines_from_file(File::open(&file_path).unwrap());
 
         assert_eq!(items, items_from_file);
     }

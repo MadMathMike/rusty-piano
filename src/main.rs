@@ -2,27 +2,23 @@ use anyhow::Result;
 use ratatui::prelude::*;
 use rodio::OutputStreamBuilder;
 use rpassword::read_password;
-use rusty_piano::json_l::{read_lines, write_lines};
+use rusty_piano::bandcamp::Item;
+use rusty_piano::json_l::{read_lines_from_file, write_lines_to_file};
 use rusty_piano::{app::*, bandcamp::BandCampClient};
-use std::path::PathBuf;
+use std::fs::File;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::thread;
 use std::time::Duration;
 
 fn main() -> Result<()> {
     let collection_path = PathBuf::from_str("collection.jsonl").unwrap();
-    // TODO: Change read_lines to return an Option if the file doesn't exist instead
-    let collection = read_lines(&collection_path).unwrap_or_else(|_| {
-        let client = login();
 
-        print!("Caching collection... ");
-        let items = client.get_entire_collection(5);
-        println!("Done!");
-
-        write_lines(&collection_path, items.iter());
-
-        items
-    });
+    // https://users.rust-lang.org/t/why-is-map-or-else-backwards/27755
+    let collection = File::open(&collection_path).map_or_else(
+        |_| login_and_cache_collection(&collection_path, 5),
+        read_lines_from_file,
+    );
 
     // Puts the terminal in raw mode, which disables line buffering (so rip to ctrl+c response)
     let mut terminal = ratatui::init();
@@ -60,8 +56,9 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn login() -> BandCampClient {
-    loop {
+fn login_and_cache_collection(collection_path: &Path, page_size: usize) -> Vec<Item> {
+    let mut client = None;
+    while client.is_none() {
         println!("Bandcamp username:");
         let mut input = String::new();
         std::io::stdin().read_line(&mut input).unwrap();
@@ -71,8 +68,17 @@ fn login() -> BandCampClient {
         let password = read_password().unwrap();
 
         match BandCampClient::new(&username, &password) {
-            Ok(client) => return client,
+            Ok(c) => client = Some(c),
             Err(err) => println!("{err}"),
         }
     }
+
+    print!("Caching collection... ");
+    let items = client.unwrap().get_entire_collection(page_size);
+    println!("Done!");
+
+    let file = File::create(&collection_path).unwrap();
+    write_lines_to_file(file, items.iter());
+
+    items
 }
