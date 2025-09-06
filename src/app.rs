@@ -10,7 +10,7 @@ use std::io::{Write, copy};
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::mpsc::{self, Sender, TryRecvError};
-use std::thread;
+use std::thread::{self, JoinHandle};
 
 use crate::player::Player;
 
@@ -20,8 +20,10 @@ pub struct App {
     album_list_state: ListState,
     channel: (mpsc::Sender<Event>, mpsc::Receiver<Event>),
     player: Player,
+    // downloading_all: bool,
 }
 
+#[derive(PartialEq)]
 pub enum DownloadStatus {
     NotDownloaded,
     Downloading,
@@ -33,6 +35,37 @@ pub struct Album {
     pub title: String,
     pub tracks: Vec<Track>,
     pub download_status: DownloadStatus,
+}
+
+impl Album {
+    pub fn download(
+        &mut self,
+        download_thread_mpsc_tx: mpsc::Sender<Event>,
+    ) -> Option<JoinHandle<std::result::Result<(), mpsc::SendError<Event>>>> {
+        if self.download_status == DownloadStatus::NotDownloaded {
+            self.download_status = DownloadStatus::Downloading;
+            let tracks = self.tracks.clone();
+            let album_title = self.title.clone();
+
+            let handle = thread::spawn(move || {
+                let download_failure = tracks
+                    .iter()
+                    .map(|track| download_track(&track.file_path, &track.download_url))
+                    .find(|result| result.is_err());
+
+                match download_failure {
+                    None => download_thread_mpsc_tx
+                        .send(Event::AlbumDownloadedEvent { title: album_title }),
+                    Some(_) => download_thread_mpsc_tx
+                        .send(Event::AlbumDownLoadFailed { title: album_title }),
+                }
+            });
+
+            Some(handle)
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -65,6 +98,7 @@ impl App {
             album_list_state,
             channel,
             player,
+            // downloading_all: false,
         }
     }
 
@@ -108,8 +142,9 @@ impl App {
             KeyCode::Right => {
                 self.player.play_next_track();
             }
-            KeyCode::Char('q') => self.exit = true,
             KeyCode::Char(' ') => self.player.toggle_playback(),
+            KeyCode::Char('d') => self.download_all(),
+            KeyCode::Char('q') => self.exit = true,
             // 't' for test? As in, play test sound? I guess that's fine if we don't need t for anything else
             KeyCode::Char('t') => {
                 let album = crate::player::Album {
@@ -130,23 +165,7 @@ impl App {
             match album.download_status {
                 DownloadStatus::Downloaded => self.player.play(album.into()),
                 DownloadStatus::NotDownloaded => {
-                    album.download_status = DownloadStatus::Downloading;
-                    let tracks = album.tracks.clone();
-                    let download_thread_mpsc_tx = self.channel.0.clone();
-                    let album_title = album.title.clone();
-                    thread::spawn(move || {
-                        let download_failure = tracks
-                            .iter()
-                            .map(|track| download_track(&track.file_path, &track.download_url))
-                            .find(|result| result.is_err());
-
-                        match download_failure {
-                            None => download_thread_mpsc_tx
-                                .send(Event::AlbumDownloadedEvent { title: album_title }),
-                            Some(_) => download_thread_mpsc_tx
-                                .send(Event::AlbumDownLoadFailed { title: album_title }),
-                        }
-                    });
+                    album.download(self.channel.0.clone());
                 }
                 DownloadStatus::Downloading => {}
                 // TODO
@@ -179,6 +198,16 @@ impl App {
         let album = album.expect("Album not found in collection");
 
         album.download_status = DownloadStatus::DownloadFailed;
+    }
+
+    fn download_all(&mut self) {
+        // if self.downloading_all {
+        //     return;
+        // }
+
+        // self.downloading_all = true;
+
+        todo!()
     }
 }
 

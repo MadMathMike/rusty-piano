@@ -1,10 +1,9 @@
 use anyhow::Result;
 use ratatui::prelude::*;
 use rodio::OutputStreamBuilder;
-use rpassword::read_password;
-use rusty_piano::bandcamp::Item;
+use rusty_piano::app::*;
+use rusty_piano::bandcamp::{BandCampClient, Item};
 use rusty_piano::json_l::{read_lines_from_file, write_lines_to_file};
-use rusty_piano::{app::*, bandcamp::BandCampClient};
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -65,7 +64,7 @@ fn login_and_cache_collection(collection_path: &Path, page_size: usize) -> Vec<I
         let username = input.trim_end().to_owned();
 
         println!("Password:");
-        let password = read_password().unwrap();
+        let password = rpassword::read_password().unwrap();
 
         match BandCampClient::new(&username, &password) {
             Ok(c) => client = Some(c),

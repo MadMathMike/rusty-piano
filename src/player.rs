@@ -31,10 +31,8 @@ impl Player {
 
     pub fn play_if_empty(&mut self, album: Album) {
         if self.sink.empty() {
-            return;
+            self.play(album);
         }
-
-        self.play(album)
     }
 
     pub fn toggle_playback(&self) {
