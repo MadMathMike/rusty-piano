@@ -43,28 +43,24 @@ impl Player {
     }
 
     pub fn play_previous_track(&mut self) -> Result<()> {
-        match self.album {
-            Some(_) => {
-                let track_index = self
-                    .tracks_state
-                    .selected()
-                    .filter(|i| *i > 0)
-                    .map_or(0, |i| i - 1);
+        if self.album.is_some() {
+            let current_index = self.tracks_state.selected();
+            let previous_index = current_index.filter(|i| *i > 0).map_or(0, |i| i - 1);
 
-                self.play_track(track_index)
-            }
-            None => Ok(()),
+            self.play_track(previous_index)
+        } else {
+            Ok(())
         }
     }
 
     pub fn play_next_track(&mut self) -> Result<()> {
-        match self.album {
-            Some(_) => {
-                let track_index = self.tracks_state.selected().map_or(0, |i| i + 1);
+        if self.album.is_some() {
+            let current_index = self.tracks_state.selected();
+            let track_index = current_index.map_or(0, |i| i + 1);
 
-                self.play_track(track_index)
-            }
-            None => Ok(()),
+            self.play_track(track_index)
+        } else {
+            Ok(())
         }
     }
 
