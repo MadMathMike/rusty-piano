@@ -302,8 +302,24 @@ impl Widget for &mut App {
             .constraints(vec![Constraint::Percentage(50), Constraint::Percentage(50)])
             .areas(body);
 
+        Widget::render(&mut self.collection, left, buf);
+
+        Widget::render(&mut self.player, right, buf);
+
+        Line::from(
+            "'↑/↓' select album | 'enter' play album | 'spacebar' play/pause | '←/→' previous/next track | 'q' quit",
+        )
+        .alignment(Alignment::Center)
+        .render(footer, buf);
+    }
+}
+
+impl Widget for &mut Collection {
+    fn render(self, area: Rect, buf: &mut Buffer)
+    where
+        Self: Sized,
+    {
         let album_titles = self
-            .collection
             .albums
             .iter()
             .map(|album| {
@@ -321,14 +337,6 @@ impl Widget for &mut App {
             .block(Block::bordered().title("Albums"))
             .highlight_symbol(">");
 
-        StatefulWidget::render(list, left, buf, &mut self.collection.album_state);
-
-        Widget::render(&mut self.player, right, buf);
-
-        Line::from(
-            "'↑/↓' select album | 'enter' play album | 'spacebar' play/pause | '←/→' previous/next track | 'q' quit",
-        )
-        .alignment(Alignment::Center)
-        .render(footer, buf);
+        StatefulWidget::render(list, area, buf, &mut self.album_state);
     }
 }
