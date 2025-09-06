@@ -5,8 +5,11 @@ use reqwest::{
     header::{HeaderMap, HeaderValue, USER_AGENT},
 };
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fmt::Display};
+use std::collections::HashMap;
+use std::fmt::Display;
 use thiserror::Error;
+
+static X_BANDCAMP_DM: &str = "X-Bandcamp-Dm";
 
 pub struct BandCampClient {
     client: Client,
@@ -14,9 +17,8 @@ pub struct BandCampClient {
 }
 
 impl BandCampClient {
-    pub fn new(username: &str, password: &str) -> Result<Self, LoginError> {
+    pub fn new(username: &str, password: &str) -> Result<Self> {
         let mut default_headers = HeaderMap::default();
-        // TODO: user agent can/should be an input parameter so it can be shared across other clients?
         default_headers.append(USER_AGENT, HeaderValue::from_static("rusty-piano/0.1"));
         default_headers.append(
             "X-Requested-With",
@@ -26,8 +28,7 @@ impl BandCampClient {
         let client = Client::builder()
             .cookie_store(true)
             .default_headers(default_headers)
-            .build()
-            .expect("Error creating reqwest client");
+            .build()?;
 
         let login_response = login(&client, username, password)?;
 
@@ -79,8 +80,7 @@ impl BandCampClient {
 
 // https://github.com/Metalnem/bandcamp-downloader
 // https://mijailovic.net/2024/04/04/bandcamp-auth/
-// TODO: convert unwraps and expects to more useful errors
-fn login(client: &Client, username: &str, password: &str) -> Result<LoginResponse, LoginError> {
+fn login(client: &Client, username: &str, password: &str) -> Result<LoginResponse> {
     let mut params = HashMap::new();
     params.insert("username", username);
     params.insert("password", password);
@@ -94,38 +94,29 @@ fn login(client: &Client, username: &str, password: &str) -> Result<LoginRespons
     let mut login_request = client
         .post("https://bandcamp.com/oauth_login")
         .form(&params)
-        .build()
-        .unwrap();
+        .build()?;
 
     let login_request_clone = login_request.try_clone().unwrap();
     let body_bytes = login_request_clone.body().unwrap().as_bytes().unwrap();
 
     let hashed_body = crypto::hmac_sha1_from_bytes_as_hex("dtmfa", body_bytes);
-    let x_bandcamp_dm = HeaderValue::from_str(&hashed_body).unwrap();
+    let x_bandcamp_dm = HeaderValue::from_str(&hashed_body)?;
 
     login_request
         .headers_mut()
-        .append("X-Bandcamp-Dm", x_bandcamp_dm);
+        .append(X_BANDCAMP_DM, x_bandcamp_dm);
 
-    let login_response = client
-        .execute(login_request)
-        .expect("Error making call to oauth_login");
+    let login_response = client.execute(login_request)?;
 
     assert_eq!(StatusCode::IM_A_TEAPOT, login_response.status());
 
-    let x_bandcamp_dm_header = login_response.headers().get("X-Bandcamp-Dm").unwrap();
-    let x_bandcamp_dm = x_bandcamp_dm_header.to_str().unwrap();
+    let x_bandcamp_dm_header = login_response.headers().get(X_BANDCAMP_DM).unwrap();
+    let x_bandcamp_dm = x_bandcamp_dm_header.to_str()?;
     let last_char = x_bandcamp_dm.chars().rev().take(1).collect::<String>();
-    let i = usize::from_str_radix(&last_char, 16).unwrap();
+    let i = usize::from_str_radix(&last_char, 16)?;
     let ith_char = x_bandcamp_dm.chars().nth(i).unwrap();
-    let algorithm = usize::from_str_radix(&String::from(ith_char), 16).unwrap();
+    let algorithm = usize::from_str_radix(&String::from(ith_char), 16)?;
     assert_eq!(1, algorithm);
-    // Calculate new x-bandcamp-dm header based on int value
-    // if 3 => hmacsha256 of stuff
-    // if 4 => hmacsha512 of stuff?
-    // otherwise
-    // if 1 => hmac_sha1([0..19] + [22..] + body)
-    // else
 
     let mut to_hash = String::with_capacity(38);
     to_hash.push_str(&x_bandcamp_dm[0..19]);
@@ -134,8 +125,7 @@ fn login(client: &Client, username: &str, password: &str) -> Result<LoginRespons
     let mut login_request = client
         .post("https://bandcamp.com/oauth_login")
         .form(&params)
-        .build()
-        .unwrap();
+        .build()?;
 
     let body_bytes = login_request
         .try_clone()
@@ -145,41 +135,39 @@ fn login(client: &Client, username: &str, password: &str) -> Result<LoginRespons
         .as_bytes()
         .unwrap()
         .to_vec();
-    let body_string = String::from_utf8(body_bytes).unwrap();
+    let body_string = String::from_utf8(body_bytes)?;
     to_hash.push_str(&body_string);
 
     let hashed_body = crypto::hmac_sha1_as_hex("dtmfa", &to_hash);
-    let x_bandcamp_dm = HeaderValue::from_str(&hashed_body).unwrap();
+    let x_bandcamp_dm = HeaderValue::from_str(&hashed_body)?;
 
     login_request
         .headers_mut()
-        .append("X-Bandcamp-Dm", x_bandcamp_dm);
+        .append(X_BANDCAMP_DM, x_bandcamp_dm);
 
-    let login_response = client
-        .execute(login_request)
-        .expect("Error making call to oauth_login");
+    let login_response = client.execute(login_request)?;
 
     assert_eq!(login_response.status(), StatusCode::OK);
 
-    let response_body = login_response.text().unwrap();
+    let response_body = login_response.text()?;
 
     if response_body.contains("error") {
         // Examples:
         // {"error":"emailVerificationRequired","error_description":"Please first re-verify your account using the link we just emailed to you."}
         // {"error":"nameNoMatch","error_description":"Unknown username or email"}
-        Err(serde_json::from_str::<LoginError>(&response_body).unwrap())
+        Result::Err(serde_json::from_str::<LoginErrorResponse>(&response_body)?.into())
     } else {
-        Ok(serde_json::from_str::<LoginResponse>(&response_body).unwrap())
+        Ok(serde_json::from_str::<LoginResponse>(&response_body)?)
     }
 }
 
 #[derive(Debug, Deserialize, Error)]
-pub struct LoginError {
+pub struct LoginErrorResponse {
     pub error: String,
     pub error_description: String,
 }
 
-impl Display for LoginError {
+impl Display for LoginErrorResponse {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} - {}", self.error, self.error_description)
     }
