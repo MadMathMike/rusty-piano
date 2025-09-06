@@ -1,6 +1,7 @@
 use anyhow::{Result, anyhow};
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use ratatui::layout::{Alignment, Constraint, Direction, Layout};
+use ratatui::prelude::*;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, List, ListState, StatefulWidget, Widget};
 use reqwest::StatusCode;
@@ -76,7 +77,6 @@ pub struct Track {
 }
 
 pub enum Event {
-    // TODO: consider abstracting away from crossterm events
     Input(KeyEvent),
     // TODO: album title is a *terrible* identifier to pass back, for multiple reasons.
     AlbumDownloaded { title: String },
@@ -108,26 +108,26 @@ impl App {
     pub fn handle_next_event(&mut self) -> Result<()> {
         match self.channel.1.try_recv() {
             Ok(event) => match event {
-                Event::Input(key_event) => self.on_key_event(key_event),
-                Event::AlbumDownloaded { title } => self.on_album_downloaded(&title),
+                Event::Input(key_event) => self.on_key_event(key_event)?,
+                Event::AlbumDownloaded { title } => self.on_album_downloaded(&title)?,
                 // TODO: update this event to display some kind of error somewhere
                 Event::AlbumDownLoadFailed { title } => self.on_album_download_failed(&title),
             },
             // TODO: consider letting the player have its own thread that tries to play the next track when appropriate
-            Err(TryRecvError::Empty) => self.player.try_play_next_track(),
+            Err(TryRecvError::Empty) => self.player.try_play_next_track()?,
             Err(_) => self.exit = true,
         }
         Ok(())
     }
 
-    fn on_key_event(&mut self, key: KeyEvent) {
+    fn on_key_event(&mut self, key: KeyEvent) -> Result<()> {
         if key.kind != KeyEventKind::Press {
-            return;
+            return Ok(());
         }
         match key.code {
             KeyCode::Enter => {
                 if let Some(selected) = self.album_list_state.selected() {
-                    self.on_album_selected(selected);
+                    self.on_album_selected(selected)?;
                 }
             }
             KeyCode::Up => {
@@ -137,10 +137,10 @@ impl App {
                 self.album_list_state.select_next();
             }
             KeyCode::Left => {
-                self.player.play_previous_track();
+                self.player.play_previous_track()?;
             }
             KeyCode::Right => {
-                self.player.play_next_track();
+                self.player.play_next_track()?;
             }
             KeyCode::Char(' ') => self.player.toggle_playback(),
             KeyCode::Char('d') => self.download_all(),
@@ -151,49 +151,49 @@ impl App {
                     title: "Test file".to_owned(),
                     tracks: vec![crate::player::Track {
                         title: "file_example_MP3_2MG".to_owned(),
-                        file_path: PathBuf::from_str("./file_example_MP3_2MG.mp3").unwrap(),
+                        file_path: PathBuf::from_str("./file_example_MP3_2MG.mp3")?,
                     }],
                 };
-                self.player.play(album);
+                self.player.play(album)?;
             }
             _ => (),
-        }
+        };
+
+        Ok(())
     }
 
-    fn on_album_selected(&mut self, selected: usize) {
+    fn on_album_selected(&mut self, selected: usize) -> Result<()> {
         if let Some(album) = self.collection.get_mut(selected) {
             match album.download_status {
                 DownloadStatus::Downloading => {}
-                DownloadStatus::Downloaded => self.player.play(album.into()),
+                DownloadStatus::Downloaded => self.player.play(album.into())?,
                 DownloadStatus::NotDownloaded | DownloadStatus::DownloadFailed => {
                     album.download(self.channel.0.clone());
                 }
             }
         }
+
+        Ok(())
     }
 
-    fn on_album_downloaded(&mut self, album_title: &str) {
+    fn on_album_downloaded(&mut self, album_title: &str) -> Result<()> {
         let album = self
             .collection
             .iter_mut()
-            .find(|album| album.title.eq(album_title));
-
-        // TODO: "this shouldn't happen 🤪" (self deprecating)
-        let album = album.expect("Album not found in collection");
+            .find(|album| album.title.eq(album_title))
+            .unwrap();
 
         album.download_status = DownloadStatus::Downloaded;
 
-        self.player.play_if_empty(album.into());
+        self.player.play_if_empty(album.into())
     }
 
     fn on_album_download_failed(&mut self, album_title: &str) {
         let album = self
             .collection
             .iter_mut()
-            .find(|album| album.title.eq(album_title));
-
-        // TODO: "this shouldn't happen 🤪" (self deprecating)
-        let album = album.expect("Album not found in collection");
+            .find(|album| album.title.eq(album_title))
+            .unwrap();
 
         album.download_status = DownloadStatus::DownloadFailed;
     }
@@ -214,11 +214,11 @@ fn download_track(path: &PathBuf, download_url: &str) -> Result<()> {
 
     match download_response.status() {
         StatusCode::OK => {
-            create_dir_all(path.parent().unwrap()).unwrap();
-            let mut file = File::create(&path).unwrap();
+            create_dir_all(path.parent().unwrap())?;
+            let mut file = File::create(&path)?;
 
-            copy(&mut download_response, &mut file).expect("error copying download to file");
-            file.flush().expect("error finishing copy?");
+            copy(&mut download_response, &mut file)?;
+            file.flush()?;
 
             Ok(())
         }
@@ -247,7 +247,7 @@ impl From<&mut Album> for crate::player::Album {
 }
 
 impl Widget for &mut App {
-    fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer)
+    fn render(self, area: Rect, buf: &mut Buffer)
     where
         Self: Sized,
     {

@@ -1,3 +1,4 @@
+use anyhow::Result;
 use ratatui::widgets::{Block, List, ListState, StatefulWidget, Widget};
 use rodio::{Decoder, OutputStream, Sink};
 use std::{fs::File, path::PathBuf, usize};
@@ -21,18 +22,22 @@ impl Player {
         }
     }
 
-    pub fn play(&mut self, album: Album) {
+    pub fn play(&mut self, album: Album) -> Result<()> {
         self.sink.stop();
         self.tracks_state = ListState::default();
         self.header = album.title;
         self.tracks = album.tracks;
-        self.play_track_number(0);
+        self.play_track_number(0)?;
+
+        Ok(())
     }
 
-    pub fn play_if_empty(&mut self, album: Album) {
+    pub fn play_if_empty(&mut self, album: Album) -> Result<()> {
         if self.sink.empty() {
-            self.play(album);
+            self.play(album)?;
         }
+
+        Ok(())
     }
 
     pub fn toggle_playback(&self) {
@@ -43,9 +48,9 @@ impl Player {
         }
     }
 
-    pub fn play_previous_track(&mut self) {
+    pub fn play_previous_track(&mut self) -> Result<()> {
         if self.tracks.is_empty() {
-            return;
+            return Ok(());
         }
 
         let previous_track_number = match self.tracks_state.selected() {
@@ -57,13 +62,15 @@ impl Player {
         };
 
         if previous_track_number.is_some() {
-            self.play_track_number(previous_track_number.unwrap());
+            self.play_track_number(previous_track_number.unwrap())?;
         }
+
+        Ok(())
     }
 
-    pub fn play_next_track(&mut self) {
+    pub fn play_next_track(&mut self) -> Result<()> {
         if self.tracks.is_empty() {
-            return;
+            return Ok(());
         }
 
         let next_track_number = match self.tracks_state.selected() {
@@ -71,30 +78,36 @@ impl Player {
             None => 0,
         };
 
-        self.play_track_number(next_track_number);
+        self.play_track_number(next_track_number)?;
+
+        Ok(())
     }
 
     // Only plays next track if a track is not currently "loaded".
     // i.e., Will not got to the next track even if a song is paused
-    pub fn try_play_next_track(&mut self) {
+    pub fn try_play_next_track(&mut self) -> Result<()> {
         if !self.sink.empty() {
             // We're currently playing something
-            return;
+            return Ok(());
         }
 
-        self.play_next_track();
+        self.play_next_track()?;
+
+        Ok(())
     }
 
-    fn play_track_number(&mut self, track_number: usize) {
+    fn play_track_number(&mut self, track_number: usize) -> Result<()> {
         if let Some(track) = self.tracks.get(track_number) {
             self.sink.stop();
-            let file = File::open(&track.file_path).unwrap();
-            let source = Decoder::try_from(file).unwrap();
+            let file = File::open(&track.file_path)?;
+            let source = Decoder::try_from(file)?;
             self.sink.append(source);
             self.sink.play();
 
             self.tracks_state.select(Some(track_number));
         }
+
+        Ok(())
     }
 }
 
@@ -113,6 +126,7 @@ impl Widget for &mut Player {
     where
         Self: Sized,
     {
+        // TODO: change this to enumerate
         let track_titles = (0..self.tracks.len())
             .map(|index| {
                 let track = &self.tracks[index];
