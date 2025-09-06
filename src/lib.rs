@@ -29,6 +29,7 @@ impl From<bandcamp::Item> for app::Album {
             id: value.tralbum_id,
             title: format!("{} by {}", value.title, value.band_info.name),
             tracks,
+            band_name: value.band_info.name,
             download_status,
         }
     }

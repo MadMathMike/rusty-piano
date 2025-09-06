@@ -35,6 +35,7 @@ pub struct Album {
     pub id: u32,
     pub title: String,
     pub tracks: Vec<Track>,
+    pub band_name: String,
     pub download_status: DownloadStatus,
 }
 
@@ -153,6 +154,7 @@ impl App {
                         title: "file_example_MP3_2MG".to_owned(),
                         file_path: PathBuf::from_str("./file_example_MP3_2MG.mp3")?,
                     }],
+                    band_name: "Me".to_owned(),
                 };
                 self.player.play(album)?;
             }
@@ -243,6 +245,7 @@ impl From<&mut Album> for crate::player::Album {
                     file_path: t.file_path.clone(),
                 })
                 .collect(),
+            band_name: value.band_name.clone(),
         }
     }
 }

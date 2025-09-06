@@ -6,8 +6,7 @@ use std::{fs::File, path::PathBuf, usize};
 
 pub struct Player {
     sink: Sink,
-    header: String,
-    tracks: Vec<Track>,
+    album: Option<Album>,
     tracks_state: ListState,
 }
 
@@ -17,8 +16,7 @@ impl Player {
 
         Self {
             sink,
-            header: "".to_owned(),
-            tracks: Vec::new(),
+            album: None,
             tracks_state: ListState::default(),
         }
     }
@@ -26,17 +24,14 @@ impl Player {
     pub fn play(&mut self, album: Album) -> Result<()> {
         self.sink.stop();
         self.tracks_state = ListState::default();
-        self.header = album.title;
-        self.tracks = album.tracks;
-        self.play_track(0)?;
-
-        Ok(())
+        self.album = Some(album);
+        self.play_track(0)
     }
 
     pub fn play_if_empty(&mut self, album: Album) -> Result<()> {
-        match self.sink.empty() {
-            true => self.play(album),
-            false => Ok(()),
+        match self.album {
+            None => self.play(album),
+            Some(_) => Ok(()),
         }
     }
 
@@ -48,27 +43,29 @@ impl Player {
     }
 
     pub fn play_previous_track(&mut self) -> Result<()> {
-        if self.tracks.is_empty() {
-            return Ok(());
+        match self.album {
+            Some(_) => {
+                let track_index = self
+                    .tracks_state
+                    .selected()
+                    .filter(|i| *i > 0)
+                    .map_or(0, |i| i - 1);
+
+                self.play_track(track_index)
+            }
+            None => Ok(()),
         }
-
-        let track_index = self
-            .tracks_state
-            .selected()
-            .filter(|i| *i > 0)
-            .map_or(0, |i| i - 1);
-
-        self.play_track(track_index)
     }
 
     pub fn play_next_track(&mut self) -> Result<()> {
-        if self.tracks.is_empty() {
-            return Ok(());
+        match self.album {
+            Some(_) => {
+                let track_index = self.tracks_state.selected().map_or(0, |i| i + 1);
+
+                self.play_track(track_index)
+            }
+            None => Ok(()),
         }
-
-        let track_index = self.tracks_state.selected().map_or(0, |i| i + 1);
-
-        self.play_track(track_index)
     }
 
     // Plays the next track iff a track is not currently loaded
@@ -81,7 +78,7 @@ impl Player {
     }
 
     fn play_track(&mut self, track_index: usize) -> Result<()> {
-        if let Some(track) = self.tracks.get(track_index) {
+        if let Some(track) = self.album.as_ref().unwrap().tracks.get(track_index) {
             self.sink.stop();
             let file = File::open(&track.file_path)?;
             let source = Decoder::try_from(file)?;
@@ -97,6 +94,7 @@ impl Player {
 
 pub struct Album {
     pub title: String,
+    pub band_name: String,
     pub tracks: Vec<Track>,
 }
 
@@ -111,15 +109,22 @@ impl Widget for &mut Player {
     where
         Self: Sized,
     {
-        let track_titles: Vec<String> = self
-            .tracks
-            .iter()
-            .map(|track| format!("{:02} - {}", track.number, track.title))
-            .collect();
+        let tracks: Vec<String> = self.album.as_ref().map_or(Vec::new(), |album| {
+            album
+                .tracks
+                .iter()
+                .map(|track| format!("{:02} - {}", track.number, track.title))
+                .collect()
+        });
 
-        let list = List::new(track_titles)
+        let title = self
+            .album
+            .as_ref()
+            .map_or(format!(""), |a| format!("{} by {}", a.title, a.band_name));
+
+        let list = List::new(tracks)
             .highlight_symbol("▶️")
-            .block(Block::bordered().title(self.header.clone()));
+            .block(Block::bordered().title(title));
 
         StatefulWidget::render(list, area, buf, &mut self.tracks_state);
     }
