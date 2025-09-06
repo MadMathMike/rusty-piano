@@ -33,18 +33,16 @@ impl Player {
     }
 
     pub fn play_if_empty(&mut self, album: Album) -> Result<()> {
-        if self.sink.empty() {
-            self.play(album)?;
+        match self.sink.empty() {
+            true => self.play(album),
+            false => Ok(()),
         }
-
-        Ok(())
     }
 
     pub fn toggle_playback(&self) {
-        if self.sink.is_paused() {
-            self.sink.play();
-        } else {
-            self.sink.pause();
+        match self.sink.is_paused() {
+            true => self.sink.play(),
+            false => self.sink.pause(),
         }
     }
 
@@ -61,11 +59,10 @@ impl Player {
             None => Some(0),
         };
 
-        if previous_track_number.is_some() {
-            self.play_track_number(previous_track_number.unwrap())?;
+        match previous_track_number.is_some() {
+            true => self.play_track_number(previous_track_number.unwrap()),
+            false => Ok(()),
         }
-
-        Ok(())
     }
 
     pub fn play_next_track(&mut self) -> Result<()> {
@@ -78,22 +75,16 @@ impl Player {
             None => 0,
         };
 
-        self.play_track_number(next_track_number)?;
-
-        Ok(())
+        self.play_track_number(next_track_number)
     }
 
-    // Only plays next track if a track is not currently "loaded".
-    // i.e., Will not got to the next track even if a song is paused
+    // Plays the next track iff a track is not currently loaded
+    // A paused track is still considered loaded
     pub fn try_play_next_track(&mut self) -> Result<()> {
-        if !self.sink.empty() {
-            // We're currently playing something
-            return Ok(());
+        match self.sink.empty() {
+            true => self.play_next_track(),
+            false => Ok(()),
         }
-
-        self.play_next_track()?;
-
-        Ok(())
     }
 
     fn play_track_number(&mut self, track_number: usize) -> Result<()> {
