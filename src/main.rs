@@ -49,6 +49,8 @@ fn main() -> Result<()> {
         thread::sleep(Duration::from_millis(16));
     }
 
+    // TODO: we really want to properly fix all of the error handling in this application (i.e., all of the bad unwraps and expects)
+    // When the app crashes, ratatui::restore() never gets called, leaving the terminal in a funky state
     // Returns the terminal back to normal mode
     ratatui::restore();
 

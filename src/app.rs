@@ -20,7 +20,6 @@ pub struct App {
     album_list_state: ListState,
     channel: (mpsc::Sender<Event>, mpsc::Receiver<Event>),
     player: Player,
-    // downloading_all: bool,
 }
 
 #[derive(PartialEq)]
@@ -54,8 +53,9 @@ impl Album {
                     .find(|result| result.is_err());
 
                 match download_failure {
-                    None => download_thread_mpsc_tx
-                        .send(Event::AlbumDownloadedEvent { title: album_title }),
+                    None => {
+                        download_thread_mpsc_tx.send(Event::AlbumDownloaded { title: album_title })
+                    }
                     Some(_) => download_thread_mpsc_tx
                         .send(Event::AlbumDownLoadFailed { title: album_title }),
                 }
@@ -79,7 +79,7 @@ pub enum Event {
     // TODO: consider abstracting away from crossterm events
     Input(KeyEvent),
     // TODO: album title is a *terrible* identifier to pass back, for multiple reasons.
-    AlbumDownloadedEvent { title: String },
+    AlbumDownloaded { title: String },
     AlbumDownLoadFailed { title: String },
 }
 
@@ -98,7 +98,6 @@ impl App {
             album_list_state,
             channel,
             player,
-            // downloading_all: false,
         }
     }
 
@@ -110,7 +109,7 @@ impl App {
         match self.channel.1.try_recv() {
             Ok(event) => match event {
                 Event::Input(key_event) => self.on_key_event(key_event),
-                Event::AlbumDownloadedEvent { title } => self.on_album_downloaded(&title),
+                Event::AlbumDownloaded { title } => self.on_album_downloaded(&title),
                 Event::AlbumDownLoadFailed { title } => self.on_album_download_failed(&title),
             },
             // TODO: consider letting the player have its own thread that tries to play the next track when appropriate
@@ -200,14 +199,13 @@ impl App {
         album.download_status = DownloadStatus::DownloadFailed;
     }
 
+    // TODO: Holy shit this is so bad, for so many reasons.
     fn download_all(&mut self) {
-        // if self.downloading_all {
-        //     return;
-        // }
-
-        // self.downloading_all = true;
-
-        todo!()
+        let senders = Vec::from_iter((0..self.collection.len()).map(|i| (i, self.clone_sender())));
+        senders
+            .into_iter()
+            .map(|(i, sender)| self.collection.get_mut(i).unwrap().download(sender))
+            .for_each(|_| {});
     }
 }
 
