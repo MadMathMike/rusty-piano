@@ -41,29 +41,29 @@ impl Album {
         &mut self,
         download_thread_mpsc_tx: mpsc::Sender<Event>,
     ) -> Option<JoinHandle<std::result::Result<(), mpsc::SendError<Event>>>> {
-        if self.download_status == DownloadStatus::NotDownloaded {
-            self.download_status = DownloadStatus::Downloading;
-            let tracks = self.tracks.clone();
-            let album_title = self.title.clone();
+        match self.download_status {
+            DownloadStatus::Downloaded | DownloadStatus::Downloading => None,
+            DownloadStatus::NotDownloaded | DownloadStatus::DownloadFailed => {
+                self.download_status = DownloadStatus::Downloading;
+                let tracks = self.tracks.clone();
+                let album_title = self.title.clone();
 
-            let handle = thread::spawn(move || {
-                let download_failure = tracks
-                    .iter()
-                    .map(|track| download_track(&track.file_path, &track.download_url))
-                    .find(|result| result.is_err());
+                let handle = thread::spawn(move || {
+                    let download_failure = tracks
+                        .iter()
+                        .map(|track| download_track(&track.file_path, &track.download_url))
+                        .find(|result| result.is_err());
 
-                match download_failure {
-                    None => {
-                        download_thread_mpsc_tx.send(Event::AlbumDownloaded { title: album_title })
+                    match download_failure {
+                        None => download_thread_mpsc_tx
+                            .send(Event::AlbumDownloaded { title: album_title }),
+                        Some(_) => download_thread_mpsc_tx
+                            .send(Event::AlbumDownLoadFailed { title: album_title }),
                     }
-                    Some(_) => download_thread_mpsc_tx
-                        .send(Event::AlbumDownLoadFailed { title: album_title }),
-                }
-            });
+                });
 
-            Some(handle)
-        } else {
-            None
+                Some(handle)
+            }
         }
     }
 }
@@ -110,6 +110,7 @@ impl App {
             Ok(event) => match event {
                 Event::Input(key_event) => self.on_key_event(key_event),
                 Event::AlbumDownloaded { title } => self.on_album_downloaded(&title),
+                // TODO: update this event to display some kind of error somewhere
                 Event::AlbumDownLoadFailed { title } => self.on_album_download_failed(&title),
             },
             // TODO: consider letting the player have its own thread that tries to play the next track when appropriate
@@ -162,13 +163,11 @@ impl App {
     fn on_album_selected(&mut self, selected: usize) {
         if let Some(album) = self.collection.get_mut(selected) {
             match album.download_status {
+                DownloadStatus::Downloading => {}
                 DownloadStatus::Downloaded => self.player.play(album.into()),
-                DownloadStatus::NotDownloaded => {
+                DownloadStatus::NotDownloaded | DownloadStatus::DownloadFailed => {
                     album.download(self.channel.0.clone());
                 }
-                DownloadStatus::Downloading => {}
-                // TODO
-                DownloadStatus::DownloadFailed => { /* Prompt to rebuild collection */ }
             }
         }
     }
@@ -211,10 +210,7 @@ impl App {
 
 fn download_track(path: &PathBuf, download_url: &str) -> Result<()> {
     // TODO: should I only have one client?
-    let mut download_response = reqwest::blocking::Client::new()
-        .get(download_url)
-        .send()
-        .expect("Error downloading file");
+    let mut download_response = reqwest::blocking::Client::new().get(download_url).send()?;
 
     match download_response.status() {
         StatusCode::OK => {
