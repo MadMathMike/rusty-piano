@@ -11,13 +11,12 @@ use std::thread;
 use std::time::Duration;
 
 fn main() -> Result<()> {
-    let collection_path = PathBuf::from_str("collection.jsonl").unwrap();
+    let collection_path = PathBuf::from_str("collection.jsonl")?;
 
-    // https://users.rust-lang.org/t/why-is-map-or-else-backwards/27755
-    let collection = File::open(&collection_path).map_or_else(
-        |_| login_and_cache_collection(&collection_path, 5),
-        read_lines_from_file,
-    );
+    let collection = match File::open(&collection_path) {
+        Ok(file) => read_lines_from_file(file),
+        Err(_) => login_and_cache_collection(&collection_path, 5)?,
+    };
 
     // Puts the terminal in raw mode, which disables line buffering (so rip to ctrl+c response)
     let mut terminal = ratatui::init();
@@ -25,8 +24,7 @@ fn main() -> Result<()> {
     let collection_as_vms: Vec<Album> = collection.into_iter().map(Album::from).collect();
 
     // Sound gets killed when this is dropped, so it has to live as long as the whole app.
-    let stream_handle =
-        OutputStreamBuilder::open_default_stream().expect("Error opening default audio stream");
+    let stream_handle = OutputStreamBuilder::open_default_stream()?;
     let mut app = App::new(collection_as_vms, &stream_handle);
 
     let ui_thread_mpsc_tx = app.clone_sender();
@@ -57,16 +55,16 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn login_and_cache_collection(collection_path: &Path, page_size: usize) -> Vec<Item> {
+fn login_and_cache_collection(collection_path: &Path, page_size: usize) -> Result<Vec<Item>> {
     let mut client = None;
     while client.is_none() {
         println!("Bandcamp username:");
         let mut input = String::new();
-        std::io::stdin().read_line(&mut input).unwrap();
+        std::io::stdin().read_line(&mut input)?;
         let username = input.trim_end().to_owned();
 
         println!("Password:");
-        let password = rpassword::read_password().unwrap();
+        let password = rpassword::read_password()?;
 
         match BandCampClient::new(&username, &password) {
             Ok(c) => client = Some(c),
@@ -75,11 +73,11 @@ fn login_and_cache_collection(collection_path: &Path, page_size: usize) -> Vec<I
     }
 
     print!("Caching collection... ");
-    let items = client.unwrap().get_entire_collection(page_size);
+    let items = client.unwrap().get_entire_collection(page_size)?;
     println!("Done!");
 
-    let file = File::create(&collection_path).unwrap();
+    let file = File::create(&collection_path)?;
     write_lines_to_file(file, items.iter());
 
-    items
+    Ok(items)
 }

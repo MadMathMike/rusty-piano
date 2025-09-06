@@ -38,11 +38,11 @@ impl BandCampClient {
     }
 
     // TODO: would be fun to turn this into an iter, maybe an async iter
-    pub fn get_entire_collection(&self, page_size: usize) -> Vec<Item> {
+    pub fn get_entire_collection(&self, page_size: usize) -> Result<Vec<Item>> {
         let mut offset = String::new();
         let mut items: Vec<Item> = Vec::new();
         loop {
-            let response = self.get_collection(page_size, &offset);
+            let response = self.get_collection(page_size, &offset)?;
             let token = response
                 .items
                 .last()
@@ -53,11 +53,11 @@ impl BandCampClient {
             }
             offset = token;
         }
-        items
+        Ok(items)
     }
 
     // Note: offset param used for paging
-    fn get_collection(&self, page_size: usize, offset: &str) -> CollectionResponse {
+    fn get_collection(&self, page_size: usize, offset: &str) -> Result<CollectionResponse> {
         let mut query = vec![
             ("page_size", page_size.to_string()),
             ("tralbum_type", "a".to_owned()),
@@ -71,10 +71,9 @@ impl BandCampClient {
             .get("https://bandcamp.com/api/collectionsync/1/collection")
             .query(&query)
             .bearer_auth(self.access_token.clone())
-            .send()
-            .expect("Error calling collection api");
+            .send()?;
 
-        collection_response.json::<CollectionResponse>().unwrap()
+        Ok(collection_response.json::<CollectionResponse>()?)
     }
 }
 
