@@ -1820,7 +1820,6 @@ dependencies = [
  "hex",
  "hmac",
  "keyring",
- "log",
  "ratatui",
  "reqwest",
  "rodio",

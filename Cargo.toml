@@ -10,7 +10,6 @@ crossterm = "0.29.0"
 hex = "0.4.3"
 hmac = "0.12.1"
 keyring = { version = "3.6.3", features = ["sync-secret-service"] }
-log = "0.4.27"
 ratatui = "0.29.0"
 reqwest = { version = "0.12.23", features = ["blocking", "json", "cookies"] }
 rodio = { version = "0.21.1", default-features = false, features = ["playback", "mp3"]}

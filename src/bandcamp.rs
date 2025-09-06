@@ -74,12 +74,7 @@ impl BandCampClient {
             .send()
             .expect("Error calling collection api");
 
-        let response_body = collection_response.text().unwrap();
-
-        println!("{}", &response_body);
-
-        serde_json::from_str::<CollectionResponse>(&response_body)
-            .expect("Failure parsing collection response")
+        collection_response.json::<CollectionResponse>().unwrap()
     }
 }
 
