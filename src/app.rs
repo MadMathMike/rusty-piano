@@ -32,6 +32,7 @@ pub enum DownloadStatus {
 }
 
 pub struct Album {
+    pub id: u32,
     pub title: String,
     pub tracks: Vec<Track>,
     pub download_status: DownloadStatus,
@@ -40,14 +41,14 @@ pub struct Album {
 impl Album {
     pub fn download(
         &mut self,
-        download_thread_mpsc_tx: mpsc::Sender<Event>,
+        mpsc_tx: mpsc::Sender<Event>,
     ) -> Option<JoinHandle<std::result::Result<(), mpsc::SendError<Event>>>> {
         match self.download_status {
             DownloadStatus::Downloaded | DownloadStatus::Downloading => None,
             DownloadStatus::NotDownloaded | DownloadStatus::DownloadFailed => {
                 self.download_status = DownloadStatus::Downloading;
                 let tracks = self.tracks.clone();
-                let album_title = self.title.clone();
+                let album_id = self.id;
 
                 let handle = thread::spawn(move || {
                     let download_failure = tracks
@@ -56,10 +57,8 @@ impl Album {
                         .find(|result| result.is_err());
 
                     match download_failure {
-                        None => download_thread_mpsc_tx
-                            .send(Event::AlbumDownloaded { title: album_title }),
-                        Some(_) => download_thread_mpsc_tx
-                            .send(Event::AlbumDownLoadFailed { title: album_title }),
+                        None => mpsc_tx.send(Event::AlbumDownloaded(album_id)),
+                        Some(_) => mpsc_tx.send(Event::AlbumDownLoadFailed(album_id)),
                     }
                 });
 
@@ -78,9 +77,8 @@ pub struct Track {
 
 pub enum Event {
     Input(KeyEvent),
-    // TODO: album title is a *terrible* identifier to pass back, for multiple reasons.
-    AlbumDownloaded { title: String },
-    AlbumDownLoadFailed { title: String },
+    AlbumDownloaded(u32),
+    AlbumDownLoadFailed(u32),
 }
 
 impl App {
@@ -109,9 +107,9 @@ impl App {
         match self.channel.1.try_recv() {
             Ok(event) => match event {
                 Event::Input(key_event) => self.on_key_event(key_event)?,
-                Event::AlbumDownloaded { title } => self.on_album_downloaded(&title)?,
+                Event::AlbumDownloaded(id) => self.on_album_downloaded(id)?,
                 // TODO: update this event to display some kind of error somewhere
-                Event::AlbumDownLoadFailed { title } => self.on_album_download_failed(&title),
+                Event::AlbumDownLoadFailed(id) => self.on_album_download_failed(id),
             },
             // TODO: consider letting the player have its own thread that tries to play the next track when appropriate
             Err(TryRecvError::Empty) => self.player.try_play_next_track()?,
@@ -176,11 +174,11 @@ impl App {
         Ok(())
     }
 
-    fn on_album_downloaded(&mut self, album_title: &str) -> Result<()> {
+    fn on_album_downloaded(&mut self, id: u32) -> Result<()> {
         let album = self
             .collection
             .iter_mut()
-            .find(|album| album.title.eq(album_title))
+            .find(|album| album.id == id)
             .unwrap();
 
         album.download_status = DownloadStatus::Downloaded;
@@ -188,11 +186,11 @@ impl App {
         self.player.play_if_empty(album.into())
     }
 
-    fn on_album_download_failed(&mut self, album_title: &str) {
+    fn on_album_download_failed(&mut self, id: u32) {
         let album = self
             .collection
             .iter_mut()
-            .find(|album| album.title.eq(album_title))
+            .find(|album| album.id == id)
             .unwrap();
 
         album.download_status = DownloadStatus::DownloadFailed;
