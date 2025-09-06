@@ -17,10 +17,21 @@ use crate::player::Player;
 
 pub struct App {
     pub exit: bool,
-    collection: Vec<Album>,
-    album_list_state: ListState,
+    collection: Collection,
+    // album_list_state: ListState,
     channel: (mpsc::Sender<Event>, mpsc::Receiver<Event>),
     player: Player,
+}
+
+pub struct Collection {
+    albums: Vec<Album>,
+    album_state: ListState,
+}
+
+impl Collection {
+    pub fn get_selected_album(&self) -> Option<&Album> {
+        todo!()
+    }
 }
 
 #[derive(PartialEq)]
@@ -58,8 +69,12 @@ impl Album {
                         .find(|result| result.is_err());
 
                     match download_failure {
-                        None => mpsc_tx.send(Event::AlbumDownloaded(album_id)),
-                        Some(_) => mpsc_tx.send(Event::AlbumDownLoadFailed(album_id)),
+                        None => mpsc_tx.send(Event::CollectionEvent(
+                            CollectionEvent::AlbumDownloaded(album_id),
+                        )),
+                        Some(_) => mpsc_tx.send(Event::CollectionEvent(
+                            CollectionEvent::AlbumDownLoadFailed(album_id),
+                        )),
                     }
                 });
 
@@ -77,10 +92,14 @@ pub struct Track {
     pub file_path: PathBuf,
 }
 
-pub enum Event {
-    Input(KeyEvent),
+pub enum CollectionEvent {
     AlbumDownloaded(u32),
     AlbumDownLoadFailed(u32),
+}
+
+pub enum Event {
+    Input(KeyEvent),
+    CollectionEvent(CollectionEvent),
 }
 
 impl App {
@@ -94,8 +113,10 @@ impl App {
 
         App {
             exit: false,
-            collection,
-            album_list_state,
+            collection: Collection {
+                albums: collection,
+                album_state: album_list_state,
+            },
             channel,
             player,
         }
@@ -109,9 +130,13 @@ impl App {
         match self.channel.1.try_recv() {
             Ok(event) => match event {
                 Event::Input(key_event) => self.on_key_event(key_event)?,
-                Event::AlbumDownloaded(id) => self.on_album_downloaded(id)?,
+                Event::CollectionEvent(CollectionEvent::AlbumDownloaded(id)) => {
+                    self.on_album_downloaded(id)?
+                }
                 // TODO: update this event to display some kind of error somewhere
-                Event::AlbumDownLoadFailed(id) => self.on_album_download_failed(id),
+                Event::CollectionEvent(CollectionEvent::AlbumDownLoadFailed(id)) => {
+                    self.on_album_download_failed(id)
+                }
             },
             // TODO: consider letting the player have its own thread that tries to play the next track when appropriate
             Err(TryRecvError::Empty) => self.player.try_play_next_track()?,
@@ -126,15 +151,15 @@ impl App {
         }
         match key.code {
             KeyCode::Enter => {
-                if let Some(selected) = self.album_list_state.selected() {
+                if let Some(selected) = self.collection.album_state.selected() {
                     self.on_album_selected(selected)?;
                 }
             }
             KeyCode::Up => {
-                self.album_list_state.select_previous();
+                self.collection.album_state.select_previous();
             }
             KeyCode::Down => {
-                self.album_list_state.select_next();
+                self.collection.album_state.select_next();
             }
             KeyCode::Left => {
                 self.player.play_previous_track()?;
@@ -165,7 +190,7 @@ impl App {
     }
 
     fn on_album_selected(&mut self, selected: usize) -> Result<()> {
-        if let Some(album) = self.collection.get_mut(selected) {
+        if let Some(album) = self.collection.albums.get_mut(selected) {
             match album.download_status {
                 DownloadStatus::Downloading => {}
                 DownloadStatus::Downloaded => self.player.play(album.into())?,
@@ -181,6 +206,7 @@ impl App {
     fn on_album_downloaded(&mut self, id: u32) -> Result<()> {
         let album = self
             .collection
+            .albums
             .iter_mut()
             .find(|album| album.id == id)
             .unwrap();
@@ -193,6 +219,7 @@ impl App {
     fn on_album_download_failed(&mut self, id: u32) {
         let album = self
             .collection
+            .albums
             .iter_mut()
             .find(|album| album.id == id)
             .unwrap();
@@ -202,10 +229,11 @@ impl App {
 
     // TODO: Holy shit this is so bad, for so many reasons.
     fn download_all(&mut self) {
-        let senders = Vec::from_iter((0..self.collection.len()).map(|i| (i, self.clone_sender())));
+        let senders =
+            Vec::from_iter((0..self.collection.albums.len()).map(|i| (i, self.clone_sender())));
         senders
             .into_iter()
-            .map(|(i, sender)| self.collection.get_mut(i).unwrap().download(sender))
+            .map(|(i, sender)| self.collection.albums.get_mut(i).unwrap().download(sender))
             .for_each(|_| {});
     }
 }
@@ -276,6 +304,7 @@ impl Widget for &mut App {
 
         let album_titles = self
             .collection
+            .albums
             .iter()
             .map(|album| {
                 let icon = match album.download_status {
@@ -292,7 +321,7 @@ impl Widget for &mut App {
             .block(Block::bordered().title("Albums"))
             .highlight_symbol(">");
 
-        StatefulWidget::render(list, left, buf, &mut self.album_list_state);
+        StatefulWidget::render(list, left, buf, &mut self.collection.album_state);
 
         Widget::render(&mut self.player, right, buf);
 
