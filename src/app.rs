@@ -10,6 +10,7 @@ use std::str::FromStr;
 use std::sync::mpsc::{self, Sender, TryRecvError};
 
 use crate::collection::{Album, Collection, DownloadStatus};
+use crate::events::Event;
 use crate::player::Player;
 
 pub struct App {
@@ -18,16 +19,6 @@ pub struct App {
     channel: (mpsc::Sender<Event>, mpsc::Receiver<Event>),
     player: Player,
     error: String,
-}
-
-pub enum CollectionEvent {
-    AlbumDownloaded(u32),
-    AlbumDownLoadFailed(u32, anyhow::Error),
-}
-
-pub enum Event {
-    Input(KeyEvent),
-    CollectionEvent(CollectionEvent),
 }
 
 impl App {
@@ -59,15 +50,14 @@ impl App {
         match self.channel.1.try_recv() {
             Ok(event) => match event {
                 Event::Input(key_event) => self.on_key_event(key_event)?,
-                Event::CollectionEvent(CollectionEvent::AlbumDownloaded(id)) => {
+                Event::AlbumDownloaded(id) => {
                     self.collection.get_album_mut(id).map_or(Ok(()), |album| {
                         // TODO: is it possible to move this mutation to the collection struct
                         album.download_status = DownloadStatus::Downloaded;
                         self.player.play_if_empty(album.into())
                     })?
                 }
-                // TODO: update this event to display some kind of error somewhere
-                Event::CollectionEvent(CollectionEvent::AlbumDownLoadFailed(id, err)) => {
+                Event::AlbumDownLoadFailed(id, err) => {
                     self.error = format!("{err:?}");
                     if let Some(album) = self.collection.get_album_mut(id) {
                         // TODO: is it possible to move this mutation to the collection struct

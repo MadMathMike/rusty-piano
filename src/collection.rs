@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
 
-use crate::app::{CollectionEvent, Event};
+use crate::events::Event;
 
 pub struct Collection {
     pub albums: Vec<Album>,
@@ -67,7 +67,7 @@ pub struct Album {
 }
 
 impl Album {
-    pub fn download(
+    fn download(
         &mut self,
         mpsc_tx: mpsc::Sender<Event>,
     ) -> Option<JoinHandle<std::result::Result<(), mpsc::SendError<Event>>>> {
@@ -85,12 +85,10 @@ impl Album {
                         .find(|result| result.is_err());
 
                     match download_failure {
-                        None => mpsc_tx.send(Event::CollectionEvent(
-                            CollectionEvent::AlbumDownloaded(album_id),
-                        )),
-                        Some(err) => mpsc_tx.send(Event::CollectionEvent(
-                            CollectionEvent::AlbumDownLoadFailed(album_id, err.err().unwrap()),
-                        )),
+                        None => mpsc_tx.send(Event::AlbumDownloaded(album_id)),
+                        Some(err) => {
+                            mpsc_tx.send(Event::AlbumDownLoadFailed(album_id, err.err().unwrap()))
+                        }
                     }
                 });
 
