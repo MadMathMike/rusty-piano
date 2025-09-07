@@ -3,7 +3,6 @@ use ratatui::prelude::*;
 use rodio::OutputStreamBuilder;
 use rusty_piano::app::*;
 use rusty_piano::bandcamp::{BandCampClient, Item};
-use rusty_piano::collection::Album;
 use rusty_piano::json_l::{read_lines_from_file, write_lines_to_file};
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -22,11 +21,9 @@ fn main() -> Result<()> {
     // Puts the terminal in raw mode, which disables line buffering (so rip to ctrl+c response)
     let mut terminal = ratatui::init();
 
-    let collection_as_vms: Vec<Album> = collection.into_iter().map(Album::from).collect();
-
     // Sound gets killed when this is dropped, so it has to live as long as the whole app.
     let stream_handle = OutputStreamBuilder::open_default_stream()?;
-    let mut app = App::new(collection_as_vms, &stream_handle);
+    let mut app = App::new(collection, &stream_handle);
 
     let ui_thread_mpsc_tx = app.clone_sender();
 

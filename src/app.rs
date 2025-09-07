@@ -1,17 +1,18 @@
+use crate::bandcamp::Item;
+use crate::collection::{Album, Collection, DownloadStatus};
+use crate::events::Event;
+use crate::player::Player;
+
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use ratatui::layout::{Alignment, Constraint, Direction, Layout};
 use ratatui::prelude::*;
 use ratatui::text::Line;
-use ratatui::widgets::{ListState, Widget};
+use ratatui::widgets::Widget;
 use rodio::OutputStream;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::mpsc::{self, Sender, TryRecvError};
-
-use crate::collection::{Album, Collection, DownloadStatus};
-use crate::events::Event;
-use crate::player::Player;
 
 pub struct App {
     pub exit: bool,
@@ -22,9 +23,8 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(collection: Vec<Album>, audio_output_stream: &OutputStream) -> Self {
-        let mut album_list_state = ListState::default();
-        album_list_state.select(Some(0));
+    pub fn new(bandcamp_items: Vec<Item>, audio_output_stream: &OutputStream) -> Self {
+        let collection = Collection::from_bandcamp_items(bandcamp_items);
 
         let channel = mpsc::channel();
 
@@ -32,10 +32,7 @@ impl App {
 
         App {
             exit: false,
-            collection: Collection {
-                albums: collection,
-                album_state: album_list_state,
-            },
+            collection,
             channel,
             player,
             error: "".to_owned(),

@@ -8,14 +8,27 @@ use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
 
+use crate::bandcamp;
 use crate::events::Event;
 
 pub struct Collection {
-    pub albums: Vec<Album>,
+    albums: Vec<Album>,
     pub album_state: ListState,
 }
 
 impl Collection {
+    pub fn from_bandcamp_items(bandcamp_items: Vec<crate::bandcamp::Item>) -> Self {
+        let mut album_state = ListState::default();
+        album_state.select(Some(0));
+
+        let albums = bandcamp_items.into_iter().map(Album::from).collect();
+
+        Self {
+            albums,
+            album_state,
+        }
+    }
+
     pub fn download_selected_album(&mut self, mpsc_tx: mpsc::Sender<Event>) -> Option<Album> {
         let selected = self.album_state.selected();
         if selected.is_none() {
@@ -153,4 +166,54 @@ fn download_track(path: &PathBuf, download_url: &str) -> Result<()> {
             download_response.status()
         )),
     }
+}
+
+impl From<bandcamp::Item> for Album {
+    fn from(value: bandcamp::Item) -> Self {
+        let tracks = value
+            .tracks
+            .iter()
+            .map(|track| Track {
+                number: track.track_number,
+                title: track.title.clone(),
+                download_url: track.hq_audio_url.clone(),
+                file_path: to_file_path(&value, &track),
+            })
+            .collect::<Vec<Track>>();
+
+        // figure out if everything is downloaded
+        let download_status = if tracks.iter().all(|t| t.file_path.exists()) {
+            DownloadStatus::Downloaded
+        } else {
+            DownloadStatus::NotDownloaded
+        };
+
+        Album {
+            id: value.tralbum_id,
+            title: format!("{} by {}", value.title, value.band_info.name),
+            tracks,
+            band_name: value.band_info.name,
+            download_status,
+        }
+    }
+}
+
+fn to_file_path(album: &bandcamp::Item, track: &bandcamp::Track) -> PathBuf {
+    // This is incomplete, but works for now as it address the one album in my library with a problem:
+    // The album "tempor / jester" by A Unicorn Masquerade resulted in a jester subdirectory
+    fn filename_safe_char(char: char) -> bool {
+        char != '/'
+    }
+
+    let mut band_name = album.band_info.name.clone();
+    band_name.retain(filename_safe_char);
+    let mut album_title = album.title.clone();
+    album_title.retain(filename_safe_char);
+    // TODO: download path should definitely be partially built by some safe absolute path, (and hopefully) configurable
+    let mut path = PathBuf::from(format!("./bandcamp/{band_name}/{album_title}"));
+
+    let mut track_title = track.title.clone();
+    track_title.retain(filename_safe_char);
+    path.push(format!("{:02} - {track_title}.mp3", track.track_number));
+    path
 }
