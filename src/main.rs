@@ -3,6 +3,7 @@ use ratatui::prelude::*;
 use rodio::OutputStreamBuilder;
 use rusty_piano::app::*;
 use rusty_piano::bandcamp::{BandCampClient, Item};
+use rusty_piano::collection::Album;
 use rusty_piano::json_l::{read_lines_from_file, write_lines_to_file};
 use std::fs::File;
 use std::path::{Path, PathBuf};

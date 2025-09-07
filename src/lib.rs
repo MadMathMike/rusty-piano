@@ -1,31 +1,34 @@
 use std::path::PathBuf;
 
+use crate::collection::{Album, DownloadStatus, Track};
+
 pub mod app;
 pub mod bandcamp;
+pub mod collection;
 pub mod json_l;
 pub mod player;
 
-impl From<bandcamp::Item> for app::Album {
+impl From<bandcamp::Item> for Album {
     fn from(value: bandcamp::Item) -> Self {
         let tracks = value
             .tracks
             .iter()
-            .map(|track| app::Track {
+            .map(|track| Track {
                 number: track.track_number,
                 title: track.title.clone(),
                 download_url: track.hq_audio_url.clone(),
                 file_path: to_file_path(&value, &track),
             })
-            .collect::<Vec<app::Track>>();
+            .collect::<Vec<Track>>();
 
         // figure out if everything is downloaded
         let download_status = if tracks.iter().all(|t| t.file_path.exists()) {
-            app::DownloadStatus::Downloaded
+            DownloadStatus::Downloaded
         } else {
-            app::DownloadStatus::NotDownloaded
+            DownloadStatus::NotDownloaded
         };
 
-        app::Album {
+        Album {
             id: value.tralbum_id,
             title: format!("{} by {}", value.title, value.band_info.name),
             tracks,
