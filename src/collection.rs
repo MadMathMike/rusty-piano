@@ -43,9 +43,9 @@ impl Collection {
             .for_each(|_| {});
     }
 
-    // pub fn get_album(&self, id: u32) -> Option<&Album> {
-    //     todo!()
-    // }
+    pub fn get_album_mut(&mut self, id: u32) -> Option<&mut Album> {
+        self.albums.iter_mut().find(|album| album.id == id)
+    }
 }
 
 #[derive(PartialEq, Clone)]

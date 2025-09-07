@@ -60,12 +60,19 @@ impl App {
             Ok(event) => match event {
                 Event::Input(key_event) => self.on_key_event(key_event)?,
                 Event::CollectionEvent(CollectionEvent::AlbumDownloaded(id)) => {
-                    self.on_album_downloaded(id)?
+                    self.collection.get_album_mut(id).map_or(Ok(()), |album| {
+                        // TODO: is it possible to move this mutation to the collection struct
+                        album.download_status = DownloadStatus::Downloaded;
+                        self.player.play_if_empty(album.into())
+                    })?
                 }
                 // TODO: update this event to display some kind of error somewhere
                 Event::CollectionEvent(CollectionEvent::AlbumDownLoadFailed(id, err)) => {
-                    self.on_album_download_failed(id);
                     self.error = format!("{err:?}");
+                    if let Some(album) = self.collection.get_album_mut(id) {
+                        // TODO: is it possible to move this mutation to the collection struct
+                        album.download_status = DownloadStatus::DownloadFailed;
+                    }
                 }
             },
             // TODO: consider letting the player have its own thread that tries to play the next track when appropriate
@@ -118,49 +125,11 @@ impl App {
 
         Ok(())
     }
-
-    fn on_album_downloaded(&mut self, id: u32) -> Result<()> {
-        let album = self
-            .collection
-            .albums
-            .iter_mut()
-            .find(|album| album.id == id)
-            .unwrap();
-
-        // TODO: is it possible to move this mutations to the collection struct
-        album.download_status = DownloadStatus::Downloaded;
-
-        self.player.play_if_empty(album.into())
-    }
-
-    fn on_album_download_failed(&mut self, id: u32) {
-        let album = self
-            .collection
-            .albums
-            .iter_mut()
-            .find(|album| album.id == id)
-            .unwrap();
-
-        // TODO: is it possible to move this mutations to the collection struct
-        album.download_status = DownloadStatus::DownloadFailed;
-    }
 }
 
 impl From<&mut Album> for crate::player::Album {
     fn from(value: &mut Album) -> Self {
-        crate::player::Album {
-            title: value.title.clone(),
-            tracks: value
-                .tracks
-                .iter()
-                .map(|t| crate::player::Track {
-                    number: t.number,
-                    title: t.title.clone(),
-                    file_path: t.file_path.clone(),
-                })
-                .collect(),
-            band_name: value.band_name.clone(),
-        }
+        value.clone().into()
     }
 }
 
