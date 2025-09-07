@@ -15,7 +15,6 @@ use crate::player::Player;
 pub struct App {
     pub exit: bool,
     collection: Collection,
-    // album_list_state: ListState,
     channel: (mpsc::Sender<Event>, mpsc::Receiver<Event>),
     player: Player,
     error: String,
@@ -99,7 +98,7 @@ impl App {
                 self.player.play_next_track()?;
             }
             KeyCode::Char(' ') => self.player.toggle_playback(),
-            KeyCode::Char('d') => self.download_all(),
+            KeyCode::Char('d') => self.collection.download_all(self.clone_sender()),
             KeyCode::Char('q') => self.exit = true,
             // 't' for test? As in, play test sound? I guess that's fine if we don't need t for anything else
             KeyCode::Char('t') => {
@@ -144,16 +143,6 @@ impl App {
 
         // TODO: is it possible to move this mutations to the collection struct
         album.download_status = DownloadStatus::DownloadFailed;
-    }
-
-    // TODO: Holy shit this is so bad, for so many reasons.
-    fn download_all(&mut self) {
-        let senders =
-            Vec::from_iter((0..self.collection.albums.len()).map(|i| (i, self.clone_sender())));
-        senders
-            .into_iter()
-            .map(|(i, sender)| self.collection.albums.get_mut(i).unwrap().download(sender))
-            .for_each(|_| {});
     }
 }
 

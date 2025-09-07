@@ -35,6 +35,14 @@ impl Collection {
         })
     }
 
+    // TODO: Holy shit this is so bad, for so many reasons.
+    pub fn download_all(&mut self, mpsc_tx: mpsc::Sender<Event>) {
+        self.albums
+            .iter_mut()
+            .map(|album| album.download(mpsc_tx.clone()))
+            .for_each(|_| {});
+    }
+
     // pub fn get_album(&self, id: u32) -> Option<&Album> {
     //     todo!()
     // }
