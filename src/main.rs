@@ -66,7 +66,7 @@ fn login_and_cache_collection(collection_path: &Path, page_size: usize) -> Resul
 
         match BandCampClient::new(&username, &password) {
             Ok(c) => client = Some(c),
-            Err(err) => println!("{err}"),
+            Err(err) => println!("{err:?}"),
         }
     }
 

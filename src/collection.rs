@@ -61,12 +61,31 @@ impl Collection {
     }
 }
 
-#[derive(PartialEq, Clone)]
-pub enum DownloadStatus {
-    NotDownloaded,
-    Downloading,
-    Downloaded,
-    DownloadFailed,
+impl Widget for &mut Collection {
+    fn render(self, area: Rect, buf: &mut Buffer)
+    where
+        Self: Sized,
+    {
+        let album_titles = self
+            .albums
+            .iter()
+            .map(|album| {
+                let icon = match album.download_status {
+                    DownloadStatus::NotDownloaded => '💾',
+                    DownloadStatus::Downloading => '⏳',
+                    DownloadStatus::Downloaded => '✅',
+                    DownloadStatus::DownloadFailed => '🚨',
+                };
+                format!("{} {icon}", album.title.clone())
+            })
+            .collect::<Vec<String>>();
+
+        let list = List::new(album_titles)
+            .block(Block::bordered().title("Albums"))
+            .highlight_symbol(">");
+
+        StatefulWidget::render(list, area, buf, &mut self.album_state);
+    }
 }
 
 #[derive(Clone)]
@@ -75,7 +94,6 @@ pub struct Album {
     pub title: String,
     pub tracks: Vec<Track>,
     pub band_name: String,
-    // TODO: make this private once it is managed by the collection module
     pub download_status: DownloadStatus,
 }
 
@@ -108,41 +126,6 @@ impl Album {
                 Some(handle)
             }
         }
-    }
-}
-
-#[derive(Clone)]
-pub struct Track {
-    pub number: u8,
-    pub title: String,
-    pub download_url: String,
-    pub file_path: PathBuf,
-}
-
-impl Widget for &mut Collection {
-    fn render(self, area: Rect, buf: &mut Buffer)
-    where
-        Self: Sized,
-    {
-        let album_titles = self
-            .albums
-            .iter()
-            .map(|album| {
-                let icon = match album.download_status {
-                    DownloadStatus::NotDownloaded => '💾',
-                    DownloadStatus::Downloading => '⏳',
-                    DownloadStatus::Downloaded => '✅',
-                    DownloadStatus::DownloadFailed => '🚨',
-                };
-                format!("{} {icon}", album.title.clone())
-            })
-            .collect::<Vec<String>>();
-
-        let list = List::new(album_titles)
-            .block(Block::bordered().title("Albums"))
-            .highlight_symbol(">");
-
-        StatefulWidget::render(list, area, buf, &mut self.album_state);
     }
 }
 
@@ -216,4 +199,20 @@ fn to_file_path(album: &bandcamp::Item, track: &bandcamp::Track) -> PathBuf {
     track_title.retain(filename_safe_char);
     path.push(format!("{:02} - {track_title}.mp3", track.track_number));
     path
+}
+
+#[derive(PartialEq, Clone)]
+pub enum DownloadStatus {
+    NotDownloaded,
+    Downloading,
+    Downloaded,
+    DownloadFailed,
+}
+
+#[derive(Clone)]
+pub struct Track {
+    pub number: u8,
+    pub title: String,
+    pub download_url: String,
+    pub file_path: PathBuf,
 }

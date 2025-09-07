@@ -114,30 +114,6 @@ impl App {
     }
 }
 
-impl From<&mut Album> for crate::player::Album {
-    fn from(value: &mut Album) -> Self {
-        value.clone().into()
-    }
-}
-
-impl From<Album> for crate::player::Album {
-    fn from(value: Album) -> Self {
-        crate::player::Album {
-            title: value.title,
-            tracks: value
-                .tracks
-                .into_iter()
-                .map(|track| crate::player::Track {
-                    number: track.number,
-                    title: track.title,
-                    file_path: track.file_path,
-                })
-                .collect(),
-            band_name: value.band_name,
-        }
-    }
-}
-
 impl Widget for &mut App {
     fn render(self, area: Rect, buf: &mut Buffer)
     where
@@ -174,5 +150,29 @@ impl Widget for &mut App {
         .render(footer, buf);
 
         Line::from(self.error.clone()).render(error, buf);
+    }
+}
+
+impl From<&mut Album> for crate::player::Album {
+    fn from(value: &mut Album) -> Self {
+        value.clone().into()
+    }
+}
+
+impl From<Album> for crate::player::Album {
+    fn from(value: Album) -> Self {
+        crate::player::Album {
+            title: value.title,
+            tracks: value
+                .tracks
+                .into_iter()
+                .map(|track| crate::player::Track {
+                    number: track.number,
+                    title: track.title,
+                    file_path: track.file_path,
+                })
+                .collect(),
+            band_name: value.band_name,
+        }
     }
 }
