@@ -21,20 +21,40 @@ pub struct App {
     // album_list_state: ListState,
     channel: (mpsc::Sender<Event>, mpsc::Receiver<Event>),
     player: Player,
+    error: String,
 }
 
 pub struct Collection {
     albums: Vec<Album>,
-    album_state: ListState,
+    pub album_state: ListState,
 }
 
 impl Collection {
-    pub fn get_selected_album(&self) -> Option<&Album> {
-        todo!()
+    pub fn download_selected_album(&mut self, mpsc_tx: mpsc::Sender<Event>) -> Option<Album> {
+        let selected = self.album_state.selected();
+        if selected.is_none() {
+            return None;
+        }
+        let selected = selected.unwrap();
+
+        let album = self.albums.get_mut(selected);
+
+        album.and_then(|album| match album.download_status {
+            DownloadStatus::Downloading => None,
+            DownloadStatus::Downloaded => Some(album.clone()),
+            DownloadStatus::NotDownloaded | DownloadStatus::DownloadFailed => {
+                album.download(mpsc_tx);
+                None
+            }
+        })
     }
+
+    // pub fn get_album(&self, id: u32) -> Option<&Album> {
+    //     todo!()
+    // }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub enum DownloadStatus {
     NotDownloaded,
     Downloading,
@@ -42,11 +62,13 @@ pub enum DownloadStatus {
     DownloadFailed,
 }
 
+#[derive(Clone)]
 pub struct Album {
     pub id: u32,
     pub title: String,
     pub tracks: Vec<Track>,
     pub band_name: String,
+    // TODO: make this private once it is managed by the collection module
     pub download_status: DownloadStatus,
 }
 
@@ -72,8 +94,8 @@ impl Album {
                         None => mpsc_tx.send(Event::CollectionEvent(
                             CollectionEvent::AlbumDownloaded(album_id),
                         )),
-                        Some(_) => mpsc_tx.send(Event::CollectionEvent(
-                            CollectionEvent::AlbumDownLoadFailed(album_id),
+                        Some(err) => mpsc_tx.send(Event::CollectionEvent(
+                            CollectionEvent::AlbumDownLoadFailed(album_id, err.err().unwrap()),
                         )),
                     }
                 });
@@ -94,7 +116,7 @@ pub struct Track {
 
 pub enum CollectionEvent {
     AlbumDownloaded(u32),
-    AlbumDownLoadFailed(u32),
+    AlbumDownLoadFailed(u32, anyhow::Error),
 }
 
 pub enum Event {
@@ -119,6 +141,7 @@ impl App {
             },
             channel,
             player,
+            error: "".to_owned(),
         }
     }
 
@@ -134,8 +157,9 @@ impl App {
                     self.on_album_downloaded(id)?
                 }
                 // TODO: update this event to display some kind of error somewhere
-                Event::CollectionEvent(CollectionEvent::AlbumDownLoadFailed(id)) => {
-                    self.on_album_download_failed(id)
+                Event::CollectionEvent(CollectionEvent::AlbumDownLoadFailed(id, err)) => {
+                    self.on_album_download_failed(id);
+                    self.error = format!("{err:?}");
                 }
             },
             // TODO: consider letting the player have its own thread that tries to play the next track when appropriate
@@ -151,8 +175,8 @@ impl App {
         }
         match key.code {
             KeyCode::Enter => {
-                if let Some(selected) = self.collection.album_state.selected() {
-                    self.on_album_selected(selected)?;
+                if let Some(album) = self.collection.download_selected_album(self.clone_sender()) {
+                    self.player.play(album.into())?
                 }
             }
             KeyCode::Up => {
@@ -189,20 +213,6 @@ impl App {
         Ok(())
     }
 
-    fn on_album_selected(&mut self, selected: usize) -> Result<()> {
-        if let Some(album) = self.collection.albums.get_mut(selected) {
-            match album.download_status {
-                DownloadStatus::Downloading => {}
-                DownloadStatus::Downloaded => self.player.play(album.into())?,
-                DownloadStatus::NotDownloaded | DownloadStatus::DownloadFailed => {
-                    album.download(self.channel.0.clone());
-                }
-            }
-        }
-
-        Ok(())
-    }
-
     fn on_album_downloaded(&mut self, id: u32) -> Result<()> {
         let album = self
             .collection
@@ -211,6 +221,7 @@ impl App {
             .find(|album| album.id == id)
             .unwrap();
 
+        // TODO: is it possible to move this mutations to the collection struct
         album.download_status = DownloadStatus::Downloaded;
 
         self.player.play_if_empty(album.into())
@@ -224,6 +235,7 @@ impl App {
             .find(|album| album.id == id)
             .unwrap();
 
+        // TODO: is it possible to move this mutations to the collection struct
         album.download_status = DownloadStatus::DownloadFailed;
     }
 
@@ -278,18 +290,37 @@ impl From<&mut Album> for crate::player::Album {
     }
 }
 
+impl From<Album> for crate::player::Album {
+    fn from(value: Album) -> Self {
+        crate::player::Album {
+            title: value.title,
+            tracks: value
+                .tracks
+                .into_iter()
+                .map(|track| crate::player::Track {
+                    number: track.number,
+                    title: track.title,
+                    file_path: track.file_path,
+                })
+                .collect(),
+            band_name: value.band_name,
+        }
+    }
+}
+
 impl Widget for &mut App {
     fn render(self, area: Rect, buf: &mut Buffer)
     where
         Self: Sized,
     {
-        let [header, body, footer] = Layout::default()
+        let [header, body, footer, error] = Layout::default()
             .direction(Direction::Vertical)
             .margin(1)
             .constraints(vec![
                 Constraint::Length(1),
                 Constraint::Fill(1),
-                Constraint::Length(3),
+                Constraint::Length(1),
+                Constraint::Length(1),
             ])
             .areas(area);
 
@@ -311,6 +342,8 @@ impl Widget for &mut App {
         )
         .alignment(Alignment::Center)
         .render(footer, buf);
+
+        Line::from(self.error.clone()).render(error, buf);
     }
 }
 
