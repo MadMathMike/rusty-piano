@@ -1,12 +1,9 @@
-use anyhow::{Result, anyhow};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, List, ListState, StatefulWidget, Widget};
 use std::path::PathBuf;
-use std::sync::mpsc;
 
 use crate::bandcamp;
 use crate::download_manager::DownloadManager;
-use crate::events::Event;
 
 pub struct Collection {
     albums: Vec<Album>,
@@ -26,7 +23,10 @@ impl Collection {
         }
     }
 
-    pub fn download_selected_album(&mut self, download_manager: &DownloadManager) -> Option<Album> {
+    pub fn download_selected_album(
+        &mut self,
+        download_manager: &DownloadManager,
+    ) -> Option<&Album> {
         let selected = self.album_state.selected();
         if selected.is_none() {
             return None;
@@ -35,16 +35,25 @@ impl Collection {
 
         let album = self.albums.get_mut(selected);
 
-        album.and_then(|album| download(album, download_manager))
+        match album {
+            Some(album) => {
+                if album.download(download_manager) {
+                    Some(album)
+                } else {
+                    None
+                }
+            }
+            None => None,
+        }
     }
 
-    // TODO: Holy shit this is so bad, for so many reasons.
-    pub fn download_all(&mut self, mpsc_tx: mpsc::Sender<Event>) {
-        todo!()
-        // self.albums
-        //     .iter_mut()
-        //     .map(|album| album.download(mpsc_tx.clone()))
-        //     .for_each(|_| {});
+    // TODO: we _really_ gotta make the download manager use a thread pool (or similar)
+    // because this is gonna create a _lot_ of threads. At least for people that have
+    // many albums.
+    pub fn download_all(&mut self, download_manager: &DownloadManager) {
+        self.albums.iter_mut().for_each(|album| {
+            album.download(download_manager);
+        });
     }
 
     pub fn set_downloaded(&mut self, id: u32) -> Option<&Album> {
@@ -93,26 +102,6 @@ impl Widget for &mut Collection {
     }
 }
 
-fn download(album: &mut Album, download_manager: &DownloadManager) -> Option<Album> {
-    match album.download_status {
-        DownloadStatus::Downloading => None,
-        DownloadStatus::Downloaded => Some(album.clone()),
-        DownloadStatus::NotDownloaded | DownloadStatus::DownloadFailed => {
-            album.download_status = DownloadStatus::Downloading;
-
-            let tracks = album
-                .tracks
-                .iter()
-                .map(|track| (track.download_url.clone(), track.file_path.clone()))
-                .collect();
-
-            download_manager.download(album.id, tracks);
-
-            None
-        }
-    }
-}
-
 #[derive(Clone)]
 pub struct Album {
     pub id: u32,
@@ -120,6 +109,28 @@ pub struct Album {
     pub tracks: Vec<Track>,
     pub band_name: String,
     pub download_status: DownloadStatus,
+}
+
+impl Album {
+    fn download(&mut self, download_manager: &DownloadManager) -> bool {
+        match self.download_status {
+            DownloadStatus::Downloading => false,
+            DownloadStatus::Downloaded => true,
+            DownloadStatus::NotDownloaded | DownloadStatus::DownloadFailed => {
+                self.download_status = DownloadStatus::Downloading;
+
+                let tracks = self
+                    .tracks
+                    .iter()
+                    .map(|track| (track.download_url.clone(), track.file_path.clone()))
+                    .collect();
+
+                download_manager.download(self.id, tracks);
+
+                false
+            }
+        }
+    }
 }
 
 impl From<bandcamp::Item> for Album {

@@ -28,6 +28,10 @@ impl Player {
         self.play_track(0)
     }
 
+    // TODO: The album isn't being unloaded when the last song finishes,
+    // which means if you download a new album to listen to because you
+    // noticed the currently playing one stopped, the new album doesn't
+    // auto play when it is finished downloading
     pub fn play_if_empty(&mut self, album: Album) -> Result<()> {
         match self.album {
             None => self.play(album),

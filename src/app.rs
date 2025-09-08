@@ -93,7 +93,7 @@ impl App {
                 self.player.play_next_track()?;
             }
             KeyCode::Char(' ') => self.player.toggle_playback(),
-            KeyCode::Char('d') => self.collection.download_all(self.clone_sender()),
+            KeyCode::Char('d') => self.collection.download_all(&self.download_manager),
             KeyCode::Char('q') => self.exit = true,
             // 't' for test? As in, play test sound? I guess that's fine if we don't need t for anything else
             KeyCode::Char('t') => {
@@ -156,24 +156,18 @@ impl Widget for &mut App {
 
 impl From<&Album> for crate::player::Album {
     fn from(value: &Album) -> Self {
-        value.clone().into()
-    }
-}
-
-impl From<Album> for crate::player::Album {
-    fn from(value: Album) -> Self {
-        crate::player::Album {
-            title: value.title,
+        Self {
+            title: value.title.clone(),
             tracks: value
                 .tracks
-                .into_iter()
+                .iter()
                 .map(|track| crate::player::Track {
-                    number: track.number,
-                    title: track.title,
-                    file_path: track.file_path,
+                    number: track.number.clone(),
+                    title: track.title.clone(),
+                    file_path: track.file_path.clone(),
                 })
                 .collect(),
-            band_name: value.band_name,
+            band_name: value.band_name.clone(),
         }
     }
 }
