@@ -4,46 +4,76 @@ use std::{
     fs::{File, create_dir_all},
     io::{Write, copy},
     path::PathBuf,
-    sync::{Arc, mpsc::Sender},
-    thread::spawn,
+    sync::{
+        Arc, Mutex,
+        mpsc::{self, Receiver, Sender},
+    },
+    thread::{JoinHandle, spawn},
 };
 
 use crate::events::Event;
 
 pub struct DownloadManager {
-    client: Arc<Client>,
-    mpsc_tx: Sender<Event>,
+    download_queue_tx: Sender<Album>,
+}
+
+struct Album {
+    id: u32,
+    tracks: Vec<(String, PathBuf)>,
 }
 
 impl DownloadManager {
     pub fn new(mpsc_tx: Sender<Event>) -> Self {
+        let client = Arc::new(Client::default());
+        let channel = mpsc::channel();
+        let download_queue = Arc::new(Mutex::new(channel.1));
+        spawn_download_thread(download_queue.clone(), client.clone(), mpsc_tx.clone());
+        spawn_download_thread(download_queue.clone(), client.clone(), mpsc_tx.clone());
         Self {
-            client: Arc::new(Client::default()),
-            mpsc_tx,
+            download_queue_tx: channel.0,
         }
     }
 
     pub fn download(&self, album_id: u32, tracks: Vec<(String, PathBuf)>) {
-        let mpsc_tx = self.mpsc_tx.clone();
-        let client = self.client.clone();
+        self.download_queue_tx
+            .send(Album {
+                id: album_id,
+                tracks: tracks,
+            })
+            .unwrap();
+    }
+}
 
-        spawn(move || {
-            let download_results: Vec<Result<()>> = tracks
+// TODO: next step is to see how much faster downloads are when I can switch
+// from serial track downloading to something concurrent with futures
+fn spawn_download_thread(
+    download_queue: Arc<Mutex<Receiver<Album>>>,
+    client: Arc<Client>,
+    notify: Sender<Event>,
+) -> JoinHandle<()> {
+    spawn(move || {
+        loop {
+            let album = download_queue.lock().unwrap().recv().unwrap();
+
+            let download_results: Vec<Result<()>> = album
+                .tracks
                 .iter()
                 .map(|(download_url, file_path)| download_track(&client, &file_path, &download_url))
                 .collect();
 
             if let Some(first_failure) = download_results.into_iter().find(|result| result.is_err())
             {
-                mpsc_tx.send(Event::AlbumDownLoadFailed(
-                    album_id,
-                    first_failure.err().unwrap(),
-                ))
+                notify
+                    .send(Event::AlbumDownLoadFailed(
+                        album.id,
+                        first_failure.err().unwrap(),
+                    ))
+                    .unwrap();
             } else {
-                mpsc_tx.send(Event::AlbumDownloaded(album_id))
+                notify.send(Event::AlbumDownloaded(album.id)).unwrap();
             }
-        });
-    }
+        }
+    })
 }
 
 fn download_track(client: &Client, path: &PathBuf, download_url: &str) -> Result<()> {
