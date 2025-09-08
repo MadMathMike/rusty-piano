@@ -1,14 +1,11 @@
 use anyhow::{Result, anyhow};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, List, ListState, StatefulWidget, Widget};
-use reqwest::StatusCode;
-use std::fs::{File, create_dir_all};
-use std::io::{Write, copy};
 use std::path::PathBuf;
 use std::sync::mpsc;
-use std::thread::{self, JoinHandle};
 
 use crate::bandcamp;
+use crate::download_manager::DownloadManager;
 use crate::events::Event;
 
 pub struct Collection {
@@ -29,7 +26,7 @@ impl Collection {
         }
     }
 
-    pub fn download_selected_album(&mut self, mpsc_tx: mpsc::Sender<Event>) -> Option<Album> {
+    pub fn download_selected_album(&mut self, download_manager: &DownloadManager) -> Option<Album> {
         let selected = self.album_state.selected();
         if selected.is_none() {
             return None;
@@ -38,26 +35,34 @@ impl Collection {
 
         let album = self.albums.get_mut(selected);
 
-        album.and_then(|album| match album.download_status {
-            DownloadStatus::Downloading => None,
-            DownloadStatus::Downloaded => Some(album.clone()),
-            DownloadStatus::NotDownloaded | DownloadStatus::DownloadFailed => {
-                album.download(mpsc_tx);
-                None
-            }
-        })
+        album.and_then(|album| download(album, download_manager))
     }
 
     // TODO: Holy shit this is so bad, for so many reasons.
     pub fn download_all(&mut self, mpsc_tx: mpsc::Sender<Event>) {
-        self.albums
-            .iter_mut()
-            .map(|album| album.download(mpsc_tx.clone()))
-            .for_each(|_| {});
+        todo!()
+        // self.albums
+        //     .iter_mut()
+        //     .map(|album| album.download(mpsc_tx.clone()))
+        //     .for_each(|_| {});
     }
 
-    pub fn get_album_mut(&mut self, id: u32) -> Option<&mut Album> {
-        self.albums.iter_mut().find(|album| album.id == id)
+    pub fn set_downloaded(&mut self, id: u32) -> Option<&Album> {
+        if let Some(album) = self.albums.iter_mut().find(|album| album.id == id) {
+            album.download_status = DownloadStatus::Downloaded;
+            Some(album)
+        } else {
+            None
+        }
+    }
+
+    pub fn set_failed(&mut self, id: u32) -> Option<&Album> {
+        if let Some(album) = self.albums.iter_mut().find(|album| album.id == id) {
+            album.download_status = DownloadStatus::DownloadFailed;
+            Some(album)
+        } else {
+            None
+        }
     }
 }
 
@@ -88,6 +93,26 @@ impl Widget for &mut Collection {
     }
 }
 
+fn download(album: &mut Album, download_manager: &DownloadManager) -> Option<Album> {
+    match album.download_status {
+        DownloadStatus::Downloading => None,
+        DownloadStatus::Downloaded => Some(album.clone()),
+        DownloadStatus::NotDownloaded | DownloadStatus::DownloadFailed => {
+            album.download_status = DownloadStatus::Downloading;
+
+            let tracks = album
+                .tracks
+                .iter()
+                .map(|track| (track.download_url.clone(), track.file_path.clone()))
+                .collect();
+
+            download_manager.download(album.id, tracks);
+
+            None
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct Album {
     pub id: u32,
@@ -95,60 +120,6 @@ pub struct Album {
     pub tracks: Vec<Track>,
     pub band_name: String,
     pub download_status: DownloadStatus,
-}
-
-impl Album {
-    fn download(
-        &mut self,
-        mpsc_tx: mpsc::Sender<Event>,
-    ) -> Option<JoinHandle<std::result::Result<(), mpsc::SendError<Event>>>> {
-        match self.download_status {
-            DownloadStatus::Downloaded | DownloadStatus::Downloading => None,
-            DownloadStatus::NotDownloaded | DownloadStatus::DownloadFailed => {
-                self.download_status = DownloadStatus::Downloading;
-                let tracks = self.tracks.clone();
-                let album_id = self.id;
-
-                let handle = thread::spawn(move || {
-                    let download_failure = tracks
-                        .iter()
-                        .map(|track| download_track(&track.file_path, &track.download_url))
-                        .find(|result| result.is_err());
-
-                    match download_failure {
-                        None => mpsc_tx.send(Event::AlbumDownloaded(album_id)),
-                        Some(err) => {
-                            mpsc_tx.send(Event::AlbumDownLoadFailed(album_id, err.err().unwrap()))
-                        }
-                    }
-                });
-
-                Some(handle)
-            }
-        }
-    }
-}
-
-fn download_track(path: &PathBuf, download_url: &str) -> Result<()> {
-    // TODO: should I only have one client?
-    let mut download_response = reqwest::blocking::Client::new().get(download_url).send()?;
-
-    match download_response.status() {
-        StatusCode::OK => {
-            create_dir_all(path.parent().unwrap())?;
-            let mut file = File::create(&path)?;
-
-            copy(&mut download_response, &mut file)?;
-            file.flush()?;
-
-            Ok(())
-        }
-        // Bandcamp URLs eventually return a 410-Gone response when the download link is no longer valid
-        _ => Err(anyhow!(
-            "Download status code: {}",
-            download_response.status()
-        )),
-    }
 }
 
 impl From<bandcamp::Item> for Album {

@@ -1,5 +1,6 @@
 use crate::bandcamp::Item;
-use crate::collection::{Album, Collection, DownloadStatus};
+use crate::collection::{Album, Collection};
+use crate::download_manager::DownloadManager;
 use crate::events::Event;
 use crate::player::Player;
 
@@ -16,23 +17,25 @@ use std::sync::mpsc::{self, Sender, TryRecvError};
 
 pub struct App {
     pub exit: bool,
-    collection: Collection,
     channel: (mpsc::Sender<Event>, mpsc::Receiver<Event>),
+    collection: Collection,
+    // TODO: should the collection just have the download manager? Probably...
+    download_manager: DownloadManager,
     player: Player,
     error: String,
 }
 
 impl App {
     pub fn new(bandcamp_items: Vec<Item>, audio_output_stream: &OutputStream) -> Self {
-        let collection = Collection::from_bandcamp_items(bandcamp_items);
-
         let channel = mpsc::channel();
-
+        let collection = Collection::from_bandcamp_items(bandcamp_items);
+        let download_manager = DownloadManager::new(channel.0.clone());
         let player = Player::new(audio_output_stream);
 
         App {
             exit: false,
             collection,
+            download_manager,
             channel,
             player,
             error: "".to_owned(),
@@ -48,18 +51,13 @@ impl App {
             Ok(event) => match event {
                 Event::Input(key_event) => self.on_key_event(key_event)?,
                 Event::AlbumDownloaded(id) => {
-                    self.collection.get_album_mut(id).map_or(Ok(()), |album| {
-                        // TODO: is it possible to move this mutation to the collection struct
-                        album.download_status = DownloadStatus::Downloaded;
-                        self.player.play_if_empty(album.into())
-                    })?
+                    if let Some(album) = self.collection.set_downloaded(id) {
+                        self.player.play_if_empty(album.into())?
+                    }
                 }
                 Event::AlbumDownLoadFailed(id, err) => {
                     self.error = format!("{err:?}");
-                    if let Some(album) = self.collection.get_album_mut(id) {
-                        // TODO: is it possible to move this mutation to the collection struct
-                        album.download_status = DownloadStatus::DownloadFailed;
-                    }
+                    self.collection.set_failed(id);
                 }
             },
             // TODO: consider letting the player have its own thread that tries to play the next track when appropriate
@@ -75,7 +73,10 @@ impl App {
         }
         match key.code {
             KeyCode::Enter => {
-                if let Some(album) = self.collection.download_selected_album(self.clone_sender()) {
+                if let Some(album) = self
+                    .collection
+                    .download_selected_album(&self.download_manager)
+                {
                     self.player.play(album.into())?
                 }
             }
@@ -153,8 +154,8 @@ impl Widget for &mut App {
     }
 }
 
-impl From<&mut Album> for crate::player::Album {
-    fn from(value: &mut Album) -> Self {
+impl From<&Album> for crate::player::Album {
+    fn from(value: &Album) -> Self {
         value.clone().into()
     }
 }
