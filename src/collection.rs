@@ -27,24 +27,12 @@ impl Collection {
         &mut self,
         download_manager: &DownloadManager,
     ) -> Option<&Album> {
-        let selected = self.album_state.selected();
-        if selected.is_none() {
-            return None;
-        }
-        let selected = selected.unwrap();
-
-        let album = self.albums.get_mut(selected);
-
-        match album {
-            Some(album) => {
-                if album.download(download_manager) {
-                    Some(album)
-                } else {
-                    None
-                }
-            }
-            None => None,
-        }
+        self.album_state
+            .selected()
+            .and_then(|index| self.albums.get_mut(index))
+            .take_if(|a| a.download(download_manager))
+            .map(|a| &*a)
+            .or(None)
     }
 
     // TODO: we _really_ gotta make the download manager use a thread pool (or similar)
