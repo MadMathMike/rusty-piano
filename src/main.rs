@@ -5,6 +5,7 @@ use rusty_piano::app::*;
 use rusty_piano::bandcamp::{BandCampClient, Item};
 use rusty_piano::json_l::{read_lines_from_file, write_lines_to_file};
 use std::fs::File;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::thread;
@@ -71,6 +72,7 @@ fn login_and_cache_collection(collection_path: &Path, page_size: usize) -> Resul
     }
 
     print!("Caching collection... ");
+    std::io::stdout().flush()?;
     let items = client.unwrap().get_entire_collection(page_size)?;
     println!("Done!");
 
