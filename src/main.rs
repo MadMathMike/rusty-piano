@@ -24,7 +24,15 @@ fn main() -> Result<()> {
 
     // Sound gets killed when this is dropped, so it has to live as long as the whole app.
     let stream_handle = OutputStreamBuilder::open_default_stream()?;
-    let mut app = App::new(collection, &stream_handle);
+    // In testing, 2 thread wasn't any faster than 1 threads
+    // That could change with sufficient concurrent downloads,
+    // but I kind of like the idea of limiting the number of threads.
+    let download_runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .enable_all()
+        .build()
+        .unwrap();
+    let mut app = App::new(collection, &stream_handle, download_runtime);
 
     let ui_thread_mpsc_tx = app.clone_sender();
 

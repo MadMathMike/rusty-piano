@@ -35,9 +35,6 @@ impl Collection {
             .or(None)
     }
 
-    // TODO: we _really_ gotta make the download manager use a thread pool (or similar)
-    // because this is gonna create a _lot_ of threads. At least for people that have
-    // many albums.
     pub fn download_all(&mut self, download_manager: &DownloadManager) {
         self.albums.iter_mut().for_each(|album| {
             album.download(download_manager);

@@ -14,6 +14,7 @@ use rodio::OutputStream;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::mpsc::{self, Sender, TryRecvError};
+use tokio::runtime::Runtime;
 
 pub struct App {
     pub exit: bool,
@@ -26,10 +27,14 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(bandcamp_items: Vec<Item>, audio_output_stream: &OutputStream) -> Self {
+    pub fn new(
+        bandcamp_items: Vec<Item>,
+        audio_output_stream: &OutputStream,
+        download_runtime: Runtime,
+    ) -> Self {
         let channel = mpsc::channel();
         let collection = Collection::from_bandcamp_items(bandcamp_items);
-        let download_manager = DownloadManager::new(channel.0.clone());
+        let download_manager = DownloadManager::new(channel.0.clone(), download_runtime);
         let player = Player::new(audio_output_stream);
 
         App {
