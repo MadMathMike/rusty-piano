@@ -29,6 +29,7 @@ A terminal app (built with Rust) that can play collected albums from your ~~Pand
 - [ ] Code docs
 
 # Stretch Goals
+- [ ] Autoplay next album
 - [ ] Sort albums
 - [ ] Song progress
 - [ ] View albums by artist
