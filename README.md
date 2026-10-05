@@ -12,6 +12,7 @@ A terminal app (built with Rust) that can play collected albums from your ~~Pand
 - [x] Add download all functionality
   - [x] ~Not like this... 😞~ We did it with tokio! 😀
 - [ ] Support configurable download location
+  - [ ] Write to `~/Music` by default
 - [x] UI: Download state
   - [x] Show when album is downloaded
   - [x] Show when album is downloading
@@ -39,6 +40,7 @@ A terminal app (built with Rust) that can play collected albums from your ~~Pand
 - [ ] Dynamically parse BandCamp responses to error model vs happy-path model
 - [ ] Downloading progress bar (for slow connections)
 - [ ] Debug logging for trouble shooting?
+- [ ] Integrate with subvert
 
 # Lessons
 ### Playback
