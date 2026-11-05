@@ -1,6 +1,9 @@
 # Description
 A terminal app (built with Rust) that can play collected albums from your ~~Pandora~~ Bandcamp music account.
 
+Demo video (intentionally no audio): [rusty-piano-demo.webm](https://github.com/user-attachments/assets/4a68b114-abe4-4961-905b-30d96d353154)
+
+
 # Goals
 - [x] Play local mp3 on default media output device
 - [x] Authenticate with ~~Pandora~~ Bandcamp API
@@ -41,6 +44,7 @@ A terminal app (built with Rust) that can play collected albums from your ~~Pand
 - [ ] Downloading progress bar (for slow connections)
 - [ ] Debug logging for trouble shooting?
 - [ ] Integrate with subvert
+- [ ] Integrate with Pandora
 
 # Lessons
 ### Playback
