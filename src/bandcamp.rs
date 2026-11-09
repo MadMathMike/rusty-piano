@@ -110,7 +110,8 @@ fn login(client: &Client, username: &str, password: &str) -> Result<LoginRespons
 ///
 /// The challenge applies to every request to this endpoint, whatever the
 /// `grant_type`, so this is shared by any OAuth flow (e.g. a future refresh).
-fn send_oauth_request(client: &Client, params: &HashMap<&str, &str>) -> Result<String> {
+// TODO(step 6 of docs/auth-persistence-plan.md): made pub temporarily for examples/auth_probe.rs
+pub fn send_oauth_request(client: &Client, params: &HashMap<&str, &str>) -> Result<String> {
     // First attempt: sign the body alone. The server rejects it with 418 and
     // returns a challenge in the X-Bandcamp-Dm header.
     let (mut request, body) = build_oauth_request(client, params)?;

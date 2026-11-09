@@ -9,7 +9,7 @@ Goal:
 2. Implement the `grant_type=refresh_token` flow so credentials are only ever typed once and never stored.
 3. Per the user's choice, **re-sync the collection on every startup** using the token, falling back to the cached `collection.jsonl` when offline. (`collection.jsonl` stays in the working directory for now.)
 
-The refresh grant is inferred from the standard OAuth2 shape of the `/oauth_login` response (RFC 6749 §6); neither reference source uses it, so step 0 verifies it before anything else is built on it.
+The refresh grant was confirmed in step 0: it works against `/oauth_token` (not `/oauth_login`). See the step 0 findings.
 
 ## Step 0 — Verify the refresh grant (throwaway probe)
 
@@ -21,6 +21,17 @@ grant_type=refresh_token, refresh_token=<token>, client_id=134, client_secret=<s
 
 Record: whether it returns 200 with a new `access_token`; whether `refresh_token` is rotated or omitted; whether the 418 Dm challenge (and/or a 451 Pow step) occurs; the `expires_in` value; and what `GET /api/collectionsync/1/collection` returns for a bogus bearer token (expect 401). Adjust the steps below if any assumption is wrong. If refresh is unsupported, everything else still works: an expired token just falls back to the password prompt (credentials are still never stored).
 
+### Findings (2026-11-09) — done
+
+- **`/oauth_login` rejects the refresh grant.** It returns HTTP 200 with `{"error": true, "ok": false, "exception": "... Invalid grant type \"refresh_token\""}`, both with and without a Dm signature. The grant type is checked before the challenge.
+- **`POST https://bandcamp.com/oauth_token` accepts it.** This is the developer-API endpoint documented at <https://bandcamp.com/developer#refresh_tokens>. It works with the Android `client_id=134`/secret and a refresh token from `/oauth_login`. It needs **one plain form POST, with no 418 Dm challenge and no Pow step**, and returns the same shape as login: `{access_token, expires_in: 3600, ok: true, refresh_token, token_type: "bearer"}`.
+- **The refresh token rotates** on every refresh, but **the previous one stays usable**: refreshing again with the original token succeeded. So a crash between refreshing and saving `auth.json` isn't fatal.
+- **The access token came back unchanged** when refreshed within its lifetime, and the original stayed valid. It's unknown whether refresh extends that token's server-side expiry or issues a new token only once the old one expires. Rely on the 401 → refresh → retry path rather than trusting `expires_at` alone.
+- **`expires_in` is 3600 s**, matching the developer docs ("Access tokens expire in one hour").
+- **A bad or expired bearer token on the collection endpoint gets `401`** with an empty body.
+- **There is a second error shape:** `{"error": true, "exception": "..."}`, alongside the existing `{"error": "<code>", "error_description": "..."}`. `LoginErrorResponse` can't parse the boolean one.
+- The developer API is officially for labels and merch partners. Using the Android client credentials against `/oauth_token` is outside its intended use, and the user has accepted that.
+
 ## Step 1 — Make the OAuth helpers return errors instead of panicking (`src/bandcamp.rs`)
 
 A rejected refresh token must lead to a password prompt, not a crash.
@@ -28,13 +39,15 @@ A rejected refresh token must lead to a password prompt, not a crash.
 - `send_oauth_request`: replace both `assert_eq!` status checks and the header `.unwrap()` with `anyhow::bail!` / `.context(...)`.
 - `build_oauth_request`: `.unwrap()` → `.context("oauth request body is not buffered")?`.
 - `solve_dm_challenge`: `.nth(i).unwrap()` → `.context(...)`, `assert_eq!(1, algorithm)` → `bail!("unsupported X-Bandcamp-Dm algorithm {algorithm}")`.
-- Hoist `client_id`/`client_secret` into `CLIENT_ID` / `CLIENT_SECRET` constants next to `OAUTH_LOGIN_URL`.
+- Hoist `client_id`/`client_secret` into `CLIENT_ID` / `CLIENT_SECRET` constants next to `OAUTH_LOGIN_URL`, and add `OAUTH_TOKEN_URL = "https://bandcamp.com/oauth_token"`.
+- Make `send_oauth_request` private again; it was made `pub` only for the probe.
 
 ## Step 2 — Token model and refresh grant (`src/bandcamp.rs`)
 
 - Rename `LoginResponse` → `TokenResponse { access_token, expires_in: u64, refresh_token: Option<String> }`. `Option` so a refresh response that omits it keeps the old token.
-- Extract the existing `contains("error")` → `LoginErrorResponse` parsing in `login` into `parse_token_response(body: &str) -> Result<TokenResponse>`, shared by both grants.
-- Add `fn refresh_grant(client: &Client, refresh_token: &str) -> Result<TokenResponse>` that builds the params above and reuses `send_oauth_request` + `parse_token_response`.
+- Extract the existing `contains("error")` → `LoginErrorResponse` parsing in `login` into `parse_token_response(body: &str) -> Result<TokenResponse>`, shared by both grants. It must handle both error shapes from step 0: `{"error": "<code>", "error_description"}` and `{"error": true, "exception"}`. Check `ok == false` or the presence of `error` via a `serde_json::Value`, then map either shape to an `AuthError` with a readable message.
+- Add `fn refresh_grant(client: &Client, refresh_token: &str) -> Result<TokenResponse>`. It sends a **single** form POST to `OAUTH_TOKEN_URL` with `grant_type=refresh_token`, `refresh_token`, `client_id`, `client_secret` and no Dm header, then calls `parse_token_response`. It does not use `send_oauth_request`, whose challenge round-trip only applies to `/oauth_login`.
+- Always persist the rotated `refresh_token` from each refresh response.
 - New public, serializable type:
   ```rust
   #[derive(Clone, Debug, Serialize, Deserialize)]
