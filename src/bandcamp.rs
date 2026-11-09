@@ -1,7 +1,7 @@
 use anyhow::Result;
 use reqwest::{
     StatusCode,
-    blocking::{Body, Client},
+    blocking::{Body, Client, Request},
     header::{HeaderMap, HeaderValue, USER_AGENT},
 };
 use serde::{Deserialize, Serialize};
@@ -10,6 +10,8 @@ use std::fmt::Display;
 use thiserror::Error;
 
 static X_BANDCAMP_DM: &str = "X-Bandcamp-Dm";
+static OAUTH_LOGIN_URL: &str = "https://bandcamp.com/oauth_login";
+static DM_HMAC_KEY: &str = "dtmfa";
 
 pub struct BandCampClient {
     client: Client,
@@ -91,62 +93,7 @@ fn login(client: &Client, username: &str, password: &str) -> Result<LoginRespons
         "1myK12VeCL3dWl9o/ncV2VyUUbOJuNPVJK6bZZJxHvk=",
     );
 
-    let mut login_request = client
-        .post("https://bandcamp.com/oauth_login")
-        .form(&params)
-        .build()?;
-
-    let login_request_clone = login_request.try_clone().unwrap();
-    let body_bytes = login_request_clone.body().unwrap().as_bytes().unwrap();
-
-    let hashed_body = crypto::hmac_sha1_from_bytes_as_hex("dtmfa", body_bytes);
-    let x_bandcamp_dm = HeaderValue::from_str(&hashed_body)?;
-
-    login_request
-        .headers_mut()
-        .append(X_BANDCAMP_DM, x_bandcamp_dm);
-
-    let login_response = client.execute(login_request)?;
-
-    assert_eq!(StatusCode::IM_A_TEAPOT, login_response.status());
-
-    let x_bandcamp_dm_header = login_response.headers().get(X_BANDCAMP_DM).unwrap();
-    let x_bandcamp_dm = x_bandcamp_dm_header.to_str()?;
-    let last_char = x_bandcamp_dm.chars().rev().take(1).collect::<String>();
-    let i = usize::from_str_radix(&last_char, 16)?;
-    let ith_char = x_bandcamp_dm.chars().nth(i).unwrap();
-    let algorithm = usize::from_str_radix(&String::from(ith_char), 16)?;
-    assert_eq!(1, algorithm);
-
-    let mut to_hash = String::with_capacity(38);
-    to_hash.push_str(&x_bandcamp_dm[0..19]);
-    to_hash.push_str(&x_bandcamp_dm[22..]);
-
-    let mut login_request = client
-        .post("https://bandcamp.com/oauth_login")
-        .form(&params)
-        .build()?;
-
-    let body_bytes = login_request
-        .try_clone()
-        .and_then(|req| req.body().and_then(Body::as_bytes).map(<[u8]>::to_vec))
-        .unwrap();
-
-    let body_string = String::from_utf8(body_bytes)?;
-    to_hash.push_str(&body_string);
-
-    let hashed_body = crypto::hmac_sha1_as_hex("dtmfa", &to_hash);
-    let x_bandcamp_dm = HeaderValue::from_str(&hashed_body)?;
-
-    login_request
-        .headers_mut()
-        .append(X_BANDCAMP_DM, x_bandcamp_dm);
-
-    let login_response = client.execute(login_request)?;
-
-    assert_eq!(login_response.status(), StatusCode::OK);
-
-    let response_body = login_response.text()?;
+    let response_body = send_oauth_request(client, &params)?;
 
     if response_body.contains("error") {
         // Examples:
@@ -156,6 +103,76 @@ fn login(client: &Client, username: &str, password: &str) -> Result<LoginRespons
     } else {
         Ok(serde_json::from_str::<LoginResponse>(&response_body)?)
     }
+}
+
+/// POSTs `params` as a form to `/oauth_login`, completing the `X-Bandcamp-Dm`
+/// challenge, and returns the body of the final response.
+///
+/// The challenge applies to every request to this endpoint, whatever the
+/// `grant_type`, so this is shared by any OAuth flow (e.g. a future refresh).
+fn send_oauth_request(client: &Client, params: &HashMap<&str, &str>) -> Result<String> {
+    // First attempt: sign the body alone. The server rejects it with 418 and
+    // returns a challenge in the X-Bandcamp-Dm header.
+    let (mut request, body) = build_oauth_request(client, params)?;
+    let signature = crypto::hmac_sha1_from_bytes_as_hex(DM_HMAC_KEY, &body);
+    request
+        .headers_mut()
+        .append(X_BANDCAMP_DM, HeaderValue::from_str(&signature)?);
+
+    let response = client.execute(request)?;
+    assert_eq!(StatusCode::IM_A_TEAPOT, response.status());
+    let challenge = response
+        .headers()
+        .get(X_BANDCAMP_DM)
+        .unwrap()
+        .to_str()?
+        .to_owned();
+
+    // Second attempt: sign the challenge combined with the body.
+    let (mut request, body) = build_oauth_request(client, params)?;
+    let signature = solve_dm_challenge(&challenge, body)?;
+    request
+        .headers_mut()
+        .append(X_BANDCAMP_DM, HeaderValue::from_str(&signature)?);
+
+    let response = client.execute(request)?;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    Ok(response.text()?)
+}
+
+/// Builds the form POST to `/oauth_login`, returning it with a copy of its
+/// encoded body (which the challenge signatures are computed over).
+fn build_oauth_request(
+    client: &Client,
+    params: &HashMap<&str, &str>,
+) -> Result<(Request, Vec<u8>)> {
+    let request = client.post(OAUTH_LOGIN_URL).form(params).build()?;
+    let body = request
+        .body()
+        .and_then(Body::as_bytes)
+        .map(<[u8]>::to_vec)
+        .unwrap();
+    Ok((request, body))
+}
+
+/// Computes the `X-Bandcamp-Dm` value answering `challenge` for a request
+/// with the given body.
+fn solve_dm_challenge(challenge: &str, body: Vec<u8>) -> Result<String> {
+    // The last hex digit of the challenge is an index; the hex digit at that
+    // index identifies the algorithm. Only algorithm 1 is supported.
+    let last_char = challenge.chars().rev().take(1).collect::<String>();
+    let i = usize::from_str_radix(&last_char, 16)?;
+    let ith_char = challenge.chars().nth(i).unwrap();
+    let algorithm = usize::from_str_radix(&String::from(ith_char), 16)?;
+    assert_eq!(1, algorithm);
+
+    let mut to_hash = String::with_capacity(38);
+    to_hash.push_str(&challenge[0..19]);
+    to_hash.push_str(&challenge[22..]);
+    to_hash.push_str(&String::from_utf8(body)?);
+
+    Ok(crypto::hmac_sha1_as_hex(DM_HMAC_KEY, &to_hash))
 }
 
 #[derive(Debug, Deserialize, Error)]
