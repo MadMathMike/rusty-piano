@@ -2,7 +2,7 @@ use anyhow::Result;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, List, ListState, StatefulWidget, Widget};
 use rodio::{Decoder, OutputStream, Sink};
-use std::{fs::File, path::PathBuf, usize};
+use std::{fs::File, path::PathBuf};
 
 pub struct Player {
     sink: Sink,
