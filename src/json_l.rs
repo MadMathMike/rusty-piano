@@ -1,9 +1,12 @@
 use anyhow::Result;
 use serde::{Serialize, de::DeserializeOwned};
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, BufWriter};
 use std::io::{Read, Write};
 
-pub fn read_lines<T: DeserializeOwned>(reader: impl Read) -> Result<Vec<T>> {
+/// Reads newline-separated JSON (with an internal [`BufReader`]) and
+/// deserializes the JSON into items of type [`T`] to place them into an owned
+/// vector, which is returned.
+pub fn read_lines_buf<T: DeserializeOwned>(reader: impl Read) -> Result<Vec<T>> {
     let mut items = Vec::new();
     for line in BufReader::new(reader).lines() {
         items.push(serde_json::from_str::<T>(&line?)?);
@@ -12,15 +15,18 @@ pub fn read_lines<T: DeserializeOwned>(reader: impl Read) -> Result<Vec<T>> {
     Ok(items)
 }
 
-pub fn write_lines<'a, T: Serialize + 'a>(
-    mut writer: impl Write,
+/// Serializes items to JSON and writes them (via an internal [`BufWriter`])
+/// with a newline separator.
+pub fn write_lines_buf<'a, T: Serialize + 'a>(
+    writer: impl Write,
     mut items: impl Iterator<Item = &'a T>,
 ) -> Result<()> {
+    let mut writer = BufWriter::new(writer);
     items.try_for_each(|item| {
-        let serialized_item = serde_json::to_string(item)?;
-        let line = format!("{}\n", serialized_item);
-        writer.write_all(line.as_bytes())
+        serde_json::to_writer(&mut writer, item)?;
+        writer.write_all(b"\n")
     })?;
+    writer.flush()?;
     Ok(())
 }
 
@@ -46,9 +52,9 @@ mod tests {
         ];
 
         let mut vec: Vec<u8> = Vec::new();
-        write_lines(&mut vec, items.iter()).unwrap();
+        write_lines_buf(&mut vec, items.iter()).unwrap();
 
-        let items_from_file = read_lines(vec.as_slice()).unwrap();
+        let items_from_file = read_lines_buf(vec.as_slice()).unwrap();
         assert_eq!(items, items_from_file);
     }
 }

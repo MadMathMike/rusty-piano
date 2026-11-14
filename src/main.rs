@@ -3,7 +3,7 @@ use ratatui::prelude::*;
 use rodio::OutputStreamBuilder;
 use rusty_piano::app::*;
 use rusty_piano::bandcamp::{BandCampClient, Item};
-use rusty_piano::json_l::{read_lines, write_lines};
+use rusty_piano::json_l::{read_lines_buf, write_lines_buf};
 use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -15,7 +15,7 @@ fn main() -> Result<()> {
     let collection_path = PathBuf::from_str("collection.jsonl")?;
 
     let collection = match File::open(&collection_path) {
-        Ok(file) => read_lines(file)?,
+        Ok(file) => read_lines_buf(file)?,
         Err(_) => login_and_cache_collection(&collection_path, 5)?,
     };
 
@@ -85,7 +85,7 @@ fn login_and_cache_collection(collection_path: &Path, page_size: usize) -> Resul
     println!("Done!");
 
     let file = File::create(&collection_path)?;
-    write_lines(file, items.iter())?;
+    write_lines_buf(file, items.iter())?;
 
     Ok(items)
 }
