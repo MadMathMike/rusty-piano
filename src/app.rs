@@ -11,8 +11,6 @@ use ratatui::prelude::*;
 use ratatui::text::Line;
 use ratatui::widgets::Widget;
 use rodio::OutputStream;
-use std::path::PathBuf;
-use std::str::FromStr;
 use std::sync::mpsc::{self, Sender, TryRecvError};
 use tokio::runtime::Runtime;
 
@@ -100,19 +98,6 @@ impl App {
             KeyCode::Char(' ') => self.player.toggle_playback(),
             KeyCode::Char('d') => self.collection.download_all(&self.download_manager),
             KeyCode::Char('q') => self.exit = true,
-            // 't' for test? As in, play test sound? I guess that's fine if we don't need t for anything else
-            KeyCode::Char('t') => {
-                let album = crate::player::Album {
-                    title: "Test file".to_owned(),
-                    tracks: vec![crate::player::Track {
-                        number: 1,
-                        title: "file_example_MP3_2MG".to_owned(),
-                        file_path: PathBuf::from_str("./file_example_MP3_2MG.mp3")?,
-                    }],
-                    band_name: "Me".to_owned(),
-                };
-                self.player.play(album)?;
-            }
             _ => (),
         };
 
