@@ -13,6 +13,7 @@ static X_BANDCAMP_DM: &str = "X-Bandcamp-Dm";
 static OAUTH_LOGIN_URL: &str = "https://bandcamp.com/oauth_login";
 static DM_HMAC_KEY: &str = "dtmfa";
 
+// TODO: Rename BandCampClient to BandcampClient (to match website)
 pub struct BandCampClient {
     client: Client,
     access_token: String,

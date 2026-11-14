@@ -64,6 +64,18 @@ fn main() -> Result<()> {
 
 fn login_and_cache_collection(collection_path: &Path, page_size: usize) -> Result<Vec<Item>> {
     let mut client = None;
+
+    //TODO: Look for a refresh token in the state directory.
+    //If the refresh token exists, try to create a Bandcamp client from it.
+    //  Bandcamp should try to call /oauth_token
+    //      On success, bandcamp should keep the token response (w/both tokens) in memory
+    //          and return the "new" refresh token to be written to the state dir.
+    //      On failure, the currently stored refresh token should be removed
+    //          and we should fallback to creating a client with credentials.
+    //          In such a case, login should keep the token response (w/both tokens) in memory
+    //          and return a refresh token to be written to the state dir.
+    //If the refresh token doesn't exist
+
     while client.is_none() {
         println!("Bandcamp username:");
         let mut input = String::new();
@@ -78,6 +90,9 @@ fn login_and_cache_collection(collection_path: &Path, page_size: usize) -> Resul
             Err(err) => println!("{err:?}"),
         }
     }
+
+    // TODO: If Bandcamp client was made with credentials, store the auth token in the
+    // state directory.
 
     print!("Caching collection... ");
     std::io::stdout().flush()?;
