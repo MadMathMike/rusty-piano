@@ -29,11 +29,12 @@ pub fn write_lines_to_file<'a, T: Serialize + 'a>(
 
 #[cfg(test)]
 mod tests {
-    use std::{fs::remove_file, path::PathBuf, str::FromStr};
-
-    use serde::Deserialize;
-
     use super::*;
+    use serde::Deserialize;
+    use std::{
+        env::temp_dir,
+        fs::{create_dir_all, remove_file},
+    };
 
     #[derive(Serialize, Deserialize, PartialEq, Debug)]
     struct TestStruct {
@@ -42,7 +43,11 @@ mod tests {
 
     #[test]
     fn read_lines_can_read_file_created_by_write_lines() {
-        let file_path = PathBuf::from_str("test.jsonl").unwrap();
+        let mut temp_dir = temp_dir();
+        temp_dir.push("rusty-piano");
+        create_dir_all(&temp_dir).unwrap();
+        temp_dir.push("test.jsonl");
+        let file_path = temp_dir;
         let _ = remove_file(&file_path);
 
         let items = vec![
