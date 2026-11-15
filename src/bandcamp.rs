@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use reqwest::{
     StatusCode,
     blocking::{Body, Client},
@@ -17,7 +17,8 @@ pub struct BandCampClient {
 }
 
 impl BandCampClient {
-    pub fn new(username: &str, password: &str) -> Result<Self> {
+    // TODO: rename to login
+    pub fn new(username: &str, password: &str) -> Result<(Self, String)> {
         let mut default_headers = HeaderMap::default();
         default_headers.append(USER_AGENT, HeaderValue::from_static("rusty-piano/0.1"));
         default_headers.append(
@@ -31,11 +32,68 @@ impl BandCampClient {
             .build()?;
 
         let login_response = login(&client, username, password)?;
+        let refresh_token = login_response
+            .refresh_token
+            .context("No refresh token included with login response")?;
 
-        Ok(Self {
-            client,
-            access_token: login_response.access_token.clone(),
-        })
+        Ok((
+            Self {
+                client,
+                access_token: login_response.access_token.clone(),
+            },
+            refresh_token,
+        ))
+    }
+
+    // TODO: share more code with new method
+    pub fn refresh(refresh_token: &str) -> Result<(Self, String)> {
+        let mut default_headers = HeaderMap::default();
+        default_headers.append(USER_AGENT, HeaderValue::from_static("rusty-piano/0.1"));
+        default_headers.append(
+            "X-Requested-With",
+            HeaderValue::from_static("com.bandcamp.android"),
+        );
+
+        // TODO: share default client construction with "new"
+        let client = Client::builder()
+            .cookie_store(true)
+            .default_headers(default_headers)
+            .build()?;
+
+        let params = [
+            ("grant_type", "refresh_token"),
+            ("refresh_token", refresh_token),
+            ("client_id", "134"),
+            (
+                "client_secret",
+                "1myK12VeCL3dWl9o/ncV2VyUUbOJuNPVJK6bZZJxHvk=",
+            ),
+        ];
+
+        let refresh_request = client
+            .post("https://bandcamp.com/oauth_token")
+            .form(&params)
+            .build()?;
+
+        let refresh_response = client.execute(refresh_request)?;
+
+        // TODO: Add error handling for non-OK responses and for OK responses
+        // that actually contain an error. Not sure if that is possible for the
+        // oauth_token endpoint, but it is possible for the oauth_login endpoint.
+        assert_eq!(refresh_response.status(), StatusCode::OK);
+
+        let response_body = refresh_response.text()?;
+
+        let login_response = serde_json::from_str::<LoginResponse>(&response_body)?;
+        let refresh_token = login_response.refresh_token.unwrap();
+
+        Ok((
+            Self {
+                client,
+                access_token: login_response.access_token.clone(),
+            },
+            refresh_token,
+        ))
     }
 
     // TODO: would be fun to turn this into an iter, maybe an async iter
@@ -170,13 +228,14 @@ impl Display for LoginErrorResponse {
     }
 }
 
+// TODO: rename this to TokenResponse or similar
 #[derive(Debug, Deserialize)]
 struct LoginResponse {
     // pub ok: bool,
     pub access_token: String,
     // pub token_type: String,
     // pub expires_in: u32,
-    // pub refresh_token: String,
+    pub refresh_token: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -12,11 +12,13 @@ use std::thread;
 use std::time::Duration;
 
 fn main() -> Result<()> {
+    let bandcamp_client = login()?;
+
     let collection_path = PathBuf::from_str("collection.jsonl")?;
 
     let collection = match File::open(&collection_path) {
         Ok(file) => read_lines_buf(file)?,
-        Err(_) => login_and_cache_collection(&collection_path, 5)?,
+        Err(_) => cache_collection(bandcamp_client, &collection_path, 5)?,
     };
 
     // Puts the terminal in raw mode, which disables line buffering (so rip to ctrl+c response)
@@ -62,26 +64,52 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn login_and_cache_collection(collection_path: &Path, page_size: usize) -> Result<Vec<Item>> {
-    let mut client = None;
-    while client.is_none() {
-        println!("Bandcamp username:");
-        let mut input = String::new();
-        std::io::stdin().read_line(&mut input)?;
-        let username = input.trim_end().to_owned();
+fn login() -> Result<BandCampClient> {
+    let entry = keyring::Entry::new("rusty-piano", "bandcamp-refresh-token")?;
+    let secret = entry.get_secret();
 
-        println!("Password:");
-        let password = rpassword::read_password()?;
+    match secret {
+        Ok(secret_bytes) => {
+            let refresh_token = String::from_utf8(secret_bytes)?;
+            let (client, refresh_token) = BandCampClient::refresh(&refresh_token)?;
+            entry.set_secret(refresh_token.as_bytes())?;
+            Ok(client)
+        }
+        Err(err) => {
+            println!("Could not retrieve refresh token: {err:?}");
 
-        match BandCampClient::new(&username, &password) {
-            Ok(c) => client = Some(c),
-            Err(err) => println!("{err:?}"),
+            let mut client = None;
+            while client.is_none() {
+                println!("Bandcamp username:");
+                let mut input = String::new();
+                std::io::stdin().read_line(&mut input)?;
+                let username = input.trim_end().to_owned();
+
+                println!("Password:");
+                let password = rpassword::read_password()?;
+
+                match BandCampClient::new(&username, &password) {
+                    Ok((c, refresh_token)) => {
+                        entry.set_secret(refresh_token.as_bytes())?;
+                        client = Some(c)
+                    }
+                    Err(err) => println!("{err:?}"),
+                }
+            }
+
+            Ok(client.unwrap())
         }
     }
+}
 
+fn cache_collection(
+    client: BandCampClient,
+    collection_path: &Path,
+    page_size: usize,
+) -> Result<Vec<Item>> {
     print!("Caching collection... ");
     std::io::stdout().flush()?;
-    let items = client.unwrap().get_entire_collection(page_size)?;
+    let items = client.get_entire_collection(page_size)?;
     println!("Done!");
 
     let file = File::create(&collection_path)?;
