@@ -9,7 +9,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use ratatui::layout::{Alignment, Constraint, Direction, Layout};
 use ratatui::prelude::*;
 use ratatui::text::Line;
-use ratatui::widgets::Widget;
+use ratatui::widgets::{Block, Clear, Widget};
 use rodio::OutputStream;
 use std::sync::mpsc::{self, Sender, TryRecvError};
 use tokio::runtime::Runtime;
@@ -21,6 +21,7 @@ pub struct App {
     // TODO: should the collection just have the download manager? Probably...
     download_manager: DownloadManager,
     player: Player,
+    login: Option<LoginForm>, // If Some, the modal should be displayed
     error: String,
 }
 
@@ -41,6 +42,7 @@ impl App {
             download_manager,
             channel,
             player,
+            login: None,
             error: "".to_owned(),
         }
     }
@@ -80,6 +82,15 @@ impl App {
         // If we are, we need need to identify keys that will toggle or break out of
         // edit mode. And the rest (maybe?) maybe need to be sent to the input.
 
+        if let Some(form) = &mut self.login {
+            match key.code {
+                KeyCode::Esc => self.login = None,
+                _ => {}
+            }
+
+            return Ok(());
+        }
+
         match key.code {
             KeyCode::Enter => {
                 if let Some(album) = self
@@ -103,6 +114,7 @@ impl App {
             }
             KeyCode::Char(' ') => self.player.toggle_playback(),
             KeyCode::Char('d') => self.collection.download_all(&self.download_manager),
+            KeyCode::Char('l') => self.login = Some(LoginForm),
             KeyCode::Char('q') => self.exit = true,
             _ => (),
         };
@@ -127,7 +139,8 @@ impl Widget for &mut App {
             ])
             .areas(area);
 
-        Line::from("rusty piano")
+        // TODO: conditionally add the "'l'" login part of the header if we don't have an authenticated bandcamp client
+        Line::from("rusty piano | 'l' login")
             .alignment(Alignment::Center)
             .render(header, buf);
 
@@ -142,8 +155,34 @@ impl Widget for &mut App {
 
         Widget::render(&mut self.player, right, buf);
 
+        // Overlay the login box
+        if let Some(_form) = &self.login {
+            let modal = body.centered(Constraint::Length(53), Constraint::Length(10));
+            Clear.render(modal, buf);
+
+            let [modal_header, modal_username, modal_password, modal_info] = Layout::default()
+                .direction(Direction::Vertical)
+                .margin(1)
+                .constraints(vec![
+                    Constraint::Length(1),
+                    Constraint::Length(3),
+                    Constraint::Length(3),
+                    Constraint::Length(1),
+                ])
+                .areas(modal);
+            Line::from("`esc` abort | '⇥' switch field | `↵` submit")
+                .alignment(Alignment::Center)
+                .render(modal_header, buf);
+            Block::bordered()
+                .title("username")
+                .render(modal_username, buf);
+            Block::bordered()
+                .title("password")
+                .render(modal_password, buf);
+        }
+
         Line::from(
-            "'↑/↓' select album | 'enter' play album | 'spacebar' play/pause | '←/→' previous/next track | 'q' quit",
+            "'↑/↓' select album | '↵' play album | '␣' play/pause | '←/→' previous/next track | 'q' quit",
         )
         .alignment(Alignment::Center)
         .render(footer, buf);
@@ -169,3 +208,5 @@ impl From<&Album> for crate::player::Album {
         }
     }
 }
+
+struct LoginForm;
