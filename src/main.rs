@@ -1,5 +1,4 @@
 use anyhow::Result;
-use ratatui::prelude::*;
 use rodio::OutputStreamBuilder;
 use rusty_piano::app::*;
 use rusty_piano::bandcamp::{BandCampClient, Item};
@@ -48,7 +47,7 @@ fn main() -> Result<()> {
     });
 
     while !app.exit {
-        terminal.draw(|frame| app.render(frame.area(), frame.buffer_mut()))?;
+        terminal.draw(|frame| app.draw(frame))?;
 
         app.handle_next_event()?;
 

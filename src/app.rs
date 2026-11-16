@@ -49,6 +49,42 @@ impl App {
         self.channel.0.clone()
     }
 
+    pub fn draw(&mut self, frame: &mut Frame) {
+        let area = frame.area();
+        let buf = frame.buffer_mut();
+        let [header, body, footer, error] = Layout::default()
+            .direction(Direction::Vertical)
+            .margin(1)
+            .constraints(vec![
+                Constraint::Length(1),
+                Constraint::Fill(1),
+                Constraint::Length(1),
+                Constraint::Length(1),
+            ])
+            .areas(area);
+
+        Line::from("rusty piano")
+            .alignment(Alignment::Center)
+            .render(header, buf);
+
+        let [left, right] = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(vec![Constraint::Percentage(50), Constraint::Percentage(50)])
+            .areas(body);
+
+        Widget::render(&mut self.collection, left, buf);
+
+        Widget::render(&mut self.player, right, buf);
+
+        Line::from(
+                "'↑/↓' select album | 'enter' play album | 'spacebar' play/pause | '←/→' previous/next track | 'q' quit",
+            )
+            .alignment(Alignment::Center)
+            .render(footer, buf);
+
+        Line::from(self.error.clone()).render(error, buf);
+    }
+
     pub fn handle_next_event(&mut self) -> Result<()> {
         match self.channel.1.try_recv() {
             Ok(event) => match event {
@@ -102,45 +138,6 @@ impl App {
         };
 
         Ok(())
-    }
-}
-
-impl Widget for &mut App {
-    fn render(self, area: Rect, buf: &mut Buffer)
-    where
-        Self: Sized,
-    {
-        let [header, body, footer, error] = Layout::default()
-            .direction(Direction::Vertical)
-            .margin(1)
-            .constraints(vec![
-                Constraint::Length(1),
-                Constraint::Fill(1),
-                Constraint::Length(1),
-                Constraint::Length(1),
-            ])
-            .areas(area);
-
-        Line::from("rusty piano")
-            .alignment(Alignment::Center)
-            .render(header, buf);
-
-        let [left, right] = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints(vec![Constraint::Percentage(50), Constraint::Percentage(50)])
-            .areas(body);
-
-        Widget::render(&mut self.collection, left, buf);
-
-        Widget::render(&mut self.player, right, buf);
-
-        Line::from(
-            "'↑/↓' select album | 'enter' play album | 'spacebar' play/pause | '←/→' previous/next track | 'q' quit",
-        )
-        .alignment(Alignment::Center)
-        .render(footer, buf);
-
-        Line::from(self.error.clone()).render(error, buf);
     }
 }
 
