@@ -6,12 +6,13 @@ default-run = "rusty-piano"
 
 [dependencies]
 anyhow = "1.0.99"
+color-eyre = "0.6.5"
 crossterm = "0.29.0"
 hex = "0.4.3"
 hmac = "0.12.1"
 keyring = { version = "4.2.0", features = ["v1"] }
-ratatui = "0.29.0"
-reqwest = { version = "0.12.23", default-feature = false, features = ["blocking", "json", "cookies"] }
+ratatui = "0.30.2"
+reqwest = { version = "0.12.23", default-features = false, features = ["blocking", "json", "cookies"] }
 rodio = { version = "0.21.1", default-features = false, features = ["playback", "mp3"]}
 rpassword = "7.4.0"
 serde = { version = "1.0.219", features = ["derive"]}
