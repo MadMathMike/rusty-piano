@@ -74,6 +74,12 @@ impl App {
         if key.kind != KeyEventKind::Press {
             return Ok(());
         }
+
+        // TODO: If this is where global key press event handling occurs,
+        // we need to detect if we're in editing mode for a login page.
+        // If we are, we need need to identify keys that will toggle or break out of
+        // edit mode. And the rest (maybe?) maybe need to be sent to the input.
+
         match key.code {
             KeyCode::Enter => {
                 if let Some(album) = self
@@ -124,6 +130,8 @@ impl Widget for &mut App {
         Line::from("rusty piano")
             .alignment(Alignment::Center)
             .render(header, buf);
+
+        // TODO: render a login screen in the body if we don't have an authorized client
 
         let [left, right] = Layout::default()
             .direction(Direction::Horizontal)

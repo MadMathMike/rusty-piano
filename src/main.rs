@@ -3,7 +3,7 @@ use ratatui::prelude::*;
 use rodio::OutputStreamBuilder;
 use rusty_piano::app::*;
 use rusty_piano::bandcamp::{BandCampClient, Item};
-use rusty_piano::json_l::{read_lines_buf, write_lines_buf};
+use rusty_piano::json_l;
 use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -17,7 +17,7 @@ fn main() -> Result<()> {
     let collection_path = PathBuf::from_str("collection.jsonl")?;
 
     let collection = match File::open(&collection_path) {
-        Ok(file) => read_lines_buf(file)?,
+        Ok(file) => json_l::read_lines_buf(file)?,
         Err(_) => cache_collection(bandcamp_client, &collection_path, 5)?,
     };
 
@@ -49,6 +49,9 @@ fn main() -> Result<()> {
         }
     });
 
+    // TODO: I'm not sure this loop is correct. Should our intention be to disconnect event handling from
+    // rendering? I.e., should we be able to proces input events faster than we render a frame? If so,
+    // I don't think this loop accomplishes that.
     while !app.exit {
         terminal.draw(|frame| app.render(frame.area(), frame.buffer_mut()))?;
 
@@ -113,7 +116,7 @@ fn cache_collection(
     println!("Done!");
 
     let file = File::create(&collection_path)?;
-    write_lines_buf(file, items.iter())?;
+    json_l::write_lines_buf(file, items.iter())?;
 
     Ok(items)
 }
