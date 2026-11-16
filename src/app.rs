@@ -77,7 +77,7 @@ impl App {
         Widget::render(&mut self.player, right, buf);
 
         Line::from(
-                "'↑/↓' select album | 'enter' play album | 'spacebar' play/pause | '←/→' previous/next track | 'q' quit",
+                "'↑/↓' select album | '↵' download/play album | '␣' play/pause | '←/→' switch track | 'q' quit",
             )
             .alignment(Alignment::Center)
             .render(footer, buf);
