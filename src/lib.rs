@@ -4,4 +4,5 @@ pub mod collection;
 pub mod download_manager;
 pub mod events;
 pub mod json_l;
+pub mod login_modal;
 pub mod player;
