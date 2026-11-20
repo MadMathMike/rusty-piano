@@ -56,10 +56,10 @@ impl App {
             .direction(Direction::Vertical)
             .margin(1)
             .constraints(vec![
-                Constraint::Length(1),
-                Constraint::Fill(1),
-                Constraint::Length(1),
-                Constraint::Length(1),
+                Constraint::Length(1), // header
+                Constraint::Fill(1),   // body
+                Constraint::Length(1), // footer
+                Constraint::Length(1), // error
             ])
             .areas(area);
 
