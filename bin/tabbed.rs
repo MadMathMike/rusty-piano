@@ -94,11 +94,55 @@ impl App {
 #[derive(Default)]
 struct Bandcamp {}
 
+// Question: Given that many of these operations are best handled async,
+// how is the top-level app supposed to track and drive open futures to completion?
+// Does it still makes sense to delegate downloading to a separate "object"?
+impl Bandcamp {
+    fn init() -> Self {
+        // TODO: Accept credential store (or wrapping struct/function)
+        // Get refresh token from credential store
+        // Get auth token from Bandcamp API using refresh token
+        // Set state as not-authenticated if any of the above fail
+
+        // TODO: Init should probably also accept configuration for download location
+
+        Bandcamp::default()
+    }
+
+    // TODO: handle key presses
+    // open login modal
+    // sync collection
+    // navigate album list/grid
+    // download album
+    // play album
+
+    // TODO: login
+    // Return error or (auth_token, refresh_token)
+    // Store refresh_token in credential store
+
+    // TODO: sync collection
+    // If auth token is expired, attempt token refresh
+
+    // TODO: Downloading albums should retrieve updated download URLs if existing URLs return an error
+    // If attempting to to retrieve updated download URLs fail because auth token is expired,
+    // attempt refresh
+}
+
 impl Widget for &mut Bandcamp {
     fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer)
     where
         Self: Sized,
     {
+        // If not-authenticated
+        // Show command to open login modal
+        // Do not allow downloading
+
+        // If authenticated
+        // Show command to sync collection
+        // Allow downloading albums
+
+        // Items that are downloaded can be played
+
         Block::bordered().title("Bandcamp").render(area, buf);
     }
 }
