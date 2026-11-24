@@ -8,6 +8,7 @@ use ratatui::{
     text::Line,
     widgets::{Block, Widget},
 };
+use rusty_piano::secrets;
 
 fn main() -> Result<()> {
     let mut terminal = ratatui::init();
@@ -94,14 +95,21 @@ impl App {
 #[derive(Default)]
 struct Bandcamp {}
 
+const REFRESH_TOKEN_KEY: &str = "bandcamp-refresh-token";
+
 // Question: Given that many of these operations are best handled async,
 // how is the top-level app supposed to track and drive open futures to completion?
 // Does it still makes sense to delegate downloading to a separate "object"?
 impl Bandcamp {
     fn init() -> Self {
-        // TODO: Accept credential store (or wrapping struct/function)
-        // Get refresh token from credential store
-        // Get auth token from Bandcamp API using refresh token
+        let secret_result = secrets::retrieve(REFRESH_TOKEN_KEY);
+
+        if let Ok(refresh_token) = secret_result {
+            // Get auth token from Bandcamp API using refresh token
+        } else {
+            // TODO: display error in UI or write to logs
+        }
+
         // Set state as not-authenticated if any of the above fail
 
         // TODO: Init should probably also accept configuration for download location
