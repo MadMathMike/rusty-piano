@@ -5,7 +5,7 @@ use crate::events::Event;
 use crate::player::Player;
 
 use anyhow::Result;
-use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::{Alignment, Constraint, Direction, Layout};
 use ratatui::prelude::*;
 use ratatui::text::Line;
@@ -110,6 +110,12 @@ impl App {
         if key.kind != KeyEventKind::Press {
             return Ok(());
         }
+
+        if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+            self.exit = true;
+            return Ok(());
+        }
+
         match key.code {
             KeyCode::Enter => {
                 if let Some(album) = self
