@@ -4,7 +4,7 @@ A terminal app (built with Rust) that can play collected albums from your ~~Pand
 Demo video (intentionally no audio): [rusty-piano-demo.webm](https://github.com/user-attachments/assets/4a68b114-abe4-4961-905b-30d96d353154)
 
 
-# Goals
+# v0.7
 - [x] Play local mp3 on default media output device
 - [x] Authenticate with ~~Pandora~~ Bandcamp API
 - [x] Find a way to store/re-use auth-token
@@ -14,8 +14,6 @@ Demo video (intentionally no audio): [rusty-piano-demo.webm](https://github.com/
 - [x] Play songs from album consecutively
 - [x] Add download all functionality
   - [x] ~Not like this... 😞~ We did it with tokio! 😀
-- [ ] Support configurable download location
-  - [ ] Write to `~/Music` by default
 - [x] UI: Download state
   - [x] Show when album is downloaded
   - [x] Show when album is downloading
@@ -29,17 +27,35 @@ Demo video (intentionally no audio): [rusty-piano-demo.webm](https://github.com/
 - [x] UI: Navigation while album playing
 - [x] UI: Controls
 - [x] UI: Inlude artist in album list
-- [ ] Update README
-- [ ] Code docs
 
-# Stretch Goals
-- [ ] Autoplay next album
-- [ ] Sort albums
-- [ ] Song progress
-- [ ] View albums by artist
+# vNext
+- [ ] Update authorization pattern
+  - [ ] Use modal instead of terminal for login
+  - [ ] Store refresh token
+  - [ ] Use refresh token to init bandcamp client
+- [ ] Switch from horizontal split to tabbed display
+  - [ ] Bandcamp tab
+    - [ ] Collapse collection with bandcamp
+    - [ ] Album display should switch from list to grid (resizeable?)
+    - [ ] Supports login modal
+    - [ ] Supports playback if auth fails but local collection is initialized
+    - [ ] Support refresh collection action
+      - [ ] Doesn't remove downloaded albums
+  - [ ] Player tab
+    - [ ] Ensure playback controls (at least play/pause/next/previous) work globally
+    - [ ] Show time display and track time remaining
+- [ ] Global app loop processes as many events as possible before rerendering next frame (30 fps target)
+- [ ] Support configurable download location
+  - [ ] Write to `~/Music` by default
+- [ ] Queue tab
+  - [ ] Autoplay next album
+- [ ] Sort albums by
+  - [ ] artist
+  - [ ] release date
+  - [ ] date acquired
+  - [ ] album
+- [ ] Search albums
 - [ ] Preview songs in album before playing
-- [ ] Search
-- [ ] Re-auth flow
 - [ ] Dynamically parse BandCamp responses to error model vs happy-path model
 - [ ] Downloading progress bar (for slow connections)
 - [ ] Debug logging for trouble shooting?
