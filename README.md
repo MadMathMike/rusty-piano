@@ -29,10 +29,11 @@ Demo video (intentionally no audio): [rusty-piano-demo.webm](https://github.com/
 - [x] UI: Inlude artist in album list
 
 # vNext
+- [ ] Use modal instead of terminal for login
 - [ ] Update authorization pattern
-  - [ ] Use modal instead of terminal for login
-  - [ ] Store refresh token
-  - [ ] Use refresh token to init bandcamp client
+  - [x] Store refresh token
+  - [x] Use refresh token to init bandcamp client
+  - [ ] Add logout to clear stored refresh token
 - [ ] Switch from horizontal split to tabbed display
   - [ ] Bandcamp tab
     - [ ] Collapse collection with bandcamp

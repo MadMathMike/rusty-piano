@@ -5,36 +5,87 @@ use reqwest::{
     header::{HeaderMap, HeaderValue, USER_AGENT},
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fmt::Display;
 use thiserror::Error;
 
+// https://github.com/Metalnem/bandcamp-downloader
+// https://mijailovic.net/2024/04/04/bandcamp-auth/
 static X_BANDCAMP_DM: &str = "X-Bandcamp-Dm";
+const BANDCAMP_CLIENT_ID: &str = "134";
+const BANDCAMP_CLIENT_SECRET: &str = "1myK12VeCL3dWl9o/ncV2VyUUbOJuNPVJK6bZZJxHvk=";
 
 pub struct BandCampClient {
     client: Client,
     access_token: String,
+    refresh_token: String,
+}
+
+fn build_default_client() -> Result<Client> {
+    let mut default_headers = HeaderMap::default();
+    default_headers.append(USER_AGENT, HeaderValue::from_static("rusty-piano/0.1"));
+    default_headers.append(
+        "X-Requested-With",
+        HeaderValue::from_static("com.bandcamp.android"),
+    );
+
+    let client = Client::builder()
+        .cookie_store(true)
+        .default_headers(default_headers)
+        .build()?;
+
+    Ok(client)
 }
 
 impl BandCampClient {
-    pub fn new(username: &str, password: &str) -> Result<Self> {
-        let mut default_headers = HeaderMap::default();
-        default_headers.append(USER_AGENT, HeaderValue::from_static("rusty-piano/0.1"));
-        default_headers.append(
-            "X-Requested-With",
-            HeaderValue::from_static("com.bandcamp.android"),
-        );
+    pub fn refresh_token(&self) -> &str {
+        &self.refresh_token
+    }
 
-        let client = Client::builder()
-            .cookie_store(true)
-            .default_headers(default_headers)
-            .build()?;
+    pub fn login(username: &str, password: &str) -> Result<Self> {
+        let client = build_default_client()?;
 
         let login_response = login(&client, username, password)?;
 
         Ok(Self {
             client,
-            access_token: login_response.access_token.clone(),
+            access_token: login_response.access_token,
+            refresh_token: login_response.refresh_token,
+        })
+    }
+
+    pub fn refresh(refresh_token: String) -> Result<Self> {
+        let client = build_default_client()?;
+
+        let params = [
+            ("grant_type", "refresh_token"),
+            ("refresh_token", refresh_token.as_str()),
+            ("client_id", BANDCAMP_CLIENT_ID),
+            ("client_secret", BANDCAMP_CLIENT_SECRET),
+        ];
+
+        let response = client
+            .post("https://bandcamp.com/oauth_token")
+            .form(&params)
+            .send()?;
+
+        let status = response.status();
+        let response_body = response.text()?;
+
+        if !status.is_success() {
+            anyhow::bail!("refresh token request failed with {status}: {response_body}");
+        }
+
+        // TODO: the error response format for /oauth_token is unverified. Until it
+        // is, any body that doesn't match the known success shape is reported raw.
+        let token_response =
+            serde_json::from_str::<OAuthResponse>(&response_body).map_err(|e| {
+                anyhow::anyhow!("unexpected refresh token response ({e}): {response_body}")
+            })?;
+
+        Ok(Self {
+            client,
+            access_token: token_response.access_token,
+            refresh_token: token_response.refresh_token,
         })
     }
 
@@ -78,18 +129,14 @@ impl BandCampClient {
     }
 }
 
-// https://github.com/Metalnem/bandcamp-downloader
-// https://mijailovic.net/2024/04/04/bandcamp-auth/
-fn login(client: &Client, username: &str, password: &str) -> Result<LoginResponse> {
-    let mut params = HashMap::new();
-    params.insert("username", username);
-    params.insert("password", password);
-    params.insert("grant_type", "password");
-    params.insert("client_id", "134");
-    params.insert(
-        "client_secret",
-        "1myK12VeCL3dWl9o/ncV2VyUUbOJuNPVJK6bZZJxHvk=",
-    );
+fn login(client: &Client, username: &str, password: &str) -> Result<OAuthResponse> {
+    let params = [
+        ("username", username),
+        ("password", password),
+        ("grant_type", "password"),
+        ("client_id", BANDCAMP_CLIENT_ID),
+        ("client_secret", BANDCAMP_CLIENT_SECRET),
+    ];
 
     let mut login_request = client
         .post("https://bandcamp.com/oauth_login")
@@ -154,7 +201,7 @@ fn login(client: &Client, username: &str, password: &str) -> Result<LoginRespons
         // {"error":"nameNoMatch","error_description":"Unknown username or email"}
         Result::Err(serde_json::from_str::<LoginErrorResponse>(&response_body)?.into())
     } else {
-        Ok(serde_json::from_str::<LoginResponse>(&response_body)?)
+        Ok(serde_json::from_str::<OAuthResponse>(&response_body)?)
     }
 }
 
@@ -171,12 +218,12 @@ impl Display for LoginErrorResponse {
 }
 
 #[derive(Debug, Deserialize)]
-struct LoginResponse {
+struct OAuthResponse {
     // pub ok: bool,
     pub access_token: String,
     // pub token_type: String,
     // pub expires_in: u32,
-    // pub refresh_token: String,
+    pub refresh_token: String,
 }
 
 #[derive(Debug, Deserialize)]

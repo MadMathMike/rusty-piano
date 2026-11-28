@@ -1,8 +1,8 @@
 use anyhow::Result;
 use rodio::OutputStreamBuilder;
-use rusty_piano::app::*;
 use rusty_piano::bandcamp::{BandCampClient, Item};
 use rusty_piano::json_l::{read_lines_buf, write_lines_buf};
+use rusty_piano::{app::*, secrets};
 use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -11,11 +11,24 @@ use std::thread;
 use std::time::Duration;
 
 fn main() -> Result<()> {
+    const REFRESH_TOKEN_KEY: &str = "bandcamp-refresh-token";
+    let bandcamp_client = {
+        if let Ok(token) = secrets::retrieve(REFRESH_TOKEN_KEY) {
+            match BandCampClient::refresh(token) {
+                Ok(bandcamp_client) => bandcamp_client,
+                Err(_) => login()?,
+            }
+        } else {
+            login()?
+        }
+    };
+
+    secrets::store(REFRESH_TOKEN_KEY, bandcamp_client.refresh_token())?;
     let collection_path = PathBuf::from_str("collection.jsonl")?;
 
     let collection = match File::open(&collection_path) {
         Ok(file) => read_lines_buf(file)?,
-        Err(_) => login_and_cache_collection(&collection_path, 5)?,
+        Err(_) => cache_collection(&bandcamp_client, &collection_path, 5)?,
     };
 
     // Puts the terminal in raw mode, which disables line buffering (so rip to ctrl+c response)
@@ -61,7 +74,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn login_and_cache_collection(collection_path: &Path, page_size: usize) -> Result<Vec<Item>> {
+fn login() -> Result<BandCampClient> {
     let mut client = None;
     while client.is_none() {
         println!("Bandcamp username:");
@@ -72,15 +85,23 @@ fn login_and_cache_collection(collection_path: &Path, page_size: usize) -> Resul
         println!("Password:");
         let password = rpassword::read_password()?;
 
-        match BandCampClient::new(&username, &password) {
+        match BandCampClient::login(&username, &password) {
             Ok(c) => client = Some(c),
             Err(err) => println!("{err:?}"),
         }
     }
 
+    Ok(client.unwrap())
+}
+
+fn cache_collection(
+    client: &BandCampClient,
+    collection_path: &Path,
+    page_size: usize,
+) -> Result<Vec<Item>> {
     print!("Caching collection... ");
     std::io::stdout().flush()?;
-    let items = client.unwrap().get_entire_collection(page_size)?;
+    let items = client.get_entire_collection(page_size)?;
     println!("Done!");
 
     let file = File::create(&collection_path)?;
